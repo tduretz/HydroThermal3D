@@ -31,3 +31,8 @@ https://youtu.be/kV8zw6quCA8
 #### Cluster
 
 An example of job submission script is available in the root of the repository.
+
+#### Examples
+
+1. 3D porous convection after 750 steps
+![](./images/PorousConvectionStep0750.png)
