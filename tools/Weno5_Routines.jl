@@ -2,7 +2,7 @@
 # DatArray_k --> Data.Array
 # DAT --> Data.Number
 
-@parallel_indices (ix,iy,iz)function VxPlusMinus!(Vxm::Data.Array, Vxp::Data.Array, Vx::Data.Array)
+@parallel_indices (ix,iy,iz) function VxPlusMinus!(Vxm::Data.Array, Vxp::Data.Array, Vx::Data.Array)
 
     if (ix<=size(Vxm,1) && iy<=size(Vxm,2) && iz<=size(Vxm,3))
         if (Vx[ix,iy,iz] < 0.00) Vxm[ix,iy,iz] = Vx[ix,iy,iz] end

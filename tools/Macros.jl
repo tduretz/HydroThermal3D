@@ -21,6 +21,7 @@ else
 	maximum_g(A) = maximum(A)
 	minimum_g(A) = minimum(A)
 	mean_g(A)    = mean(A)
+	sum_g(A)     = sum(A)
 end
 
 #################################################
