@@ -37,39 +37,6 @@ end
 
 ############################################## Kernels for HT code ##############################################
 
-@views function SetInitialConditions(kfv::Array{Float64,3}, Tc_ex::Array{Float64,3}, xce2::Array{Float64,3}, yce2::Array{Float64,3}, zce2::Array{Float64,3}, xv2::Array{Float64,3}, yv2::Array{Float64,3}, zv2::Array{Float64,3}, yc2::Array{Float64,3}, Tbot::Data.Number, Ttop::Data.Number, dT::Data.Number, xmax::Data.Number, ymax::Data.Number, zmax::Data.Number, Ly::Data.Number, Perm::Data.Number, sc::scaling)
-        # Initial conditions: Draw Fault
-        in_fault = zero(kfv)
-        # top
-        x1 = 68466.18089117216/sc.L; x2 = 31498.437753425103/sc.L
-        y1 = 0.0/sc.L;               y2 = -16897.187956165293/sc.L
-        a1 = ( y1-y2 ) / ( x1-x2 )
-        b1 = y1 - x1*a1
-        # bottom
-        x1 = 32000.0/sc.L; x2 = 69397.54576150524/sc.L
-        y1 =-17800.0/sc.L; y2 = 0.0/sc.L
-        a2 = ( y1-y2 ) / ( x1-x2 )
-        b2 = y1 - x1*a2
-        # bottom
-        x1 = 32000.0/sc.L; x2 = 31498.437753425103/sc.L
-        y1 =-17800.0/sc.L; y2 = -16897.187956165293/sc.L
-        a3 = ( y1-y2 ) / ( x1-x2 )
-        b3 = y1 - x1*a3
-        kf0 = 5e-15/sc.kf
-        y1  = 500.0/sc.L; y2 = 3000.0/sc.L
-        @. kfv = kf0*exp((yv2 - y1)/y2)
-        @. in_fault = yv2 < (xv2*a1 + b1) && yv2 > (xv2*a2 + b2) && yv2 > (xv2*a3 + b3)
-        @. kfv[ yv2 < (xv2*a1 + b1) && yv2 > (xv2*a2 + b2) && yv2 > (xv2*a3 + b3)  ] = Perm*kfv[ yv2 < (xv2*a1 + b1) && yv2 > (xv2*a2 + b2) && yv2 > (xv2*a3 + b3)  ]
-        # Thermal field
-        @. Tc_ex = Ttop - dT/Ly * yce2
-        @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:]
-        @. Tc_ex[:,1,:] = 2*Tbot - Tc_ex[:,2,:]; @. Tc_ex[:,end,:] = 2*Ttop - Tc_ex[:,end-1,:]
-        @. Tc_ex[:,:,1] =          Tc_ex[:,:,1]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1]
-        # SET INITIAL THERMAL PERTUBATION
-        # @. Tc_ex[ ((xce2-xmax/2)^2 + (yce2-ymax/2)^2 + (zce2-zmax/2)^2) < 0.01 ] += 0.1
-        return nothing
-end
-
 @parallel function Init_vel!(Vx::Data.Array, Vy::Data.Array, Vz::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, Pc_ex::Data.Array, Ty::Data.Array, Ra::Data.Number, _dx::Data.Number, _dy::Data.Number, _dz::Data.Number)
 
     @all(Vx) = -@all(kx) * _dx*@d_xi(Pc_ex)
@@ -79,65 +46,101 @@ end
     return nothing
 end
 
-@parallel function InitDarcy!(Ty::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, Tc_ex::Data.Array, kfv::Data.Array, _dt::Data.Number)
+# @parallel function InitDarcy!(Ty::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, Tc_ex::Data.Array, kfv::Data.Array, _dt::Data.Number)
 
-	@all(Ty) = @av_yi(Tc_ex)
-	@all(kx) = @av_yza(kfv)
-	@all(ky) = @av_xza(kfv)
-	@all(kz) = @av_xya(kfv)
+# 	@all(Ty) = @av_yi(Tc_ex)
+# 	@all(kx) = @av_yza(kfv)
+# 	@all(ky) = @av_xza(kfv)
+# 	@all(kz) = @av_xya(kfv)
 
+# 	return nothing
+# end
+
+@parallel function InitThermal!(Tc0, Tc_ex)
+	@all(Tc0) = @inn(Tc_ex)
 	return nothing
 end
 
-@parallel function Compute_Rp!(Rp::Data.Array, ky::Data.Array, Ty::Data.Array, Ra::Data.Number, _dy::Data.Number)
-
-    @all(Rp) = Ra*_dy*@dmul_ya(ky, Ty)
-
-    return nothing
-end
-
-@parallel function InitThermal!(Rt::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, Tc_ex::Data.Array, ktv::Data.Array, _dt::Data.Number)
-
-    @all(Rt) = -_dt * @inn(Tc_ex)
+@parallel function InitConductivity!(kx::Data.Array, ky::Data.Array, kz::Data.Array, ktv::Data.Array)
     @all(kx) = @av_yza(ktv)
     @all(ky) = @av_xza(ktv)
     @all(kz) = @av_xya(ktv)
-
     return nothing
 end
 
 @parallel function ComputeFlux!(qx::Data.Array, qy::Data.Array, qz::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, A::Data.Array,
                                 _dx::Data.Number, _dy::Data.Number, _dz::Data.Number)
-
     @all(qx) = -@all(kx)*(_dx*@d_xi(A))
     @all(qy) = -@all(ky)*(_dy*@d_yi(A))
     @all(qz) = -@all(kz)*(_dz*@d_zi(A))
+    return nothing
+end
+
+@parallel_indices (i,j,k) function ResidualTemperature!(Ft::Data.Array, Tc_ex::Data.Array, Tc_old::Data.Array, Pc_ex::Data.Array, phc, qx, qy, qz, _dt::Data.Number, _dx, _dy, _dz, ϕ0, transient, sca_T, sca_σ, sca_C, sca_ρ)
+    if i<=size(Ft, 1) && j<=size(Ft, 2) && k<=size(Ft, 3)
+        Tsca       = Tc_ex[i+1,j+1,k+1]*sca_T
+        Psca       = Pc_ex[i+1,j+1,k+1]*sca_σ
+        ρ_eff      = ϕ(phc[i,j,k],ϕ0)*ρf(Tsca-273.15, Psca) + (1.0-ϕ(phc[i,j,k],ϕ0))*ρs(Tsca)
+        Ceff       = ϕ(phc[i,j,k],ϕ0)*Cf(Tsca)              + (1.0-ϕ(phc[i,j,k],ϕ0))*Cs(Tsca)
+        ρC_eff     = (ρ_eff*Ceff)/sca_ρ/sca_C
+        Ft[i,j,k]  = transient*ρC_eff*_dt*(Tc_ex[i+1,j+1,k+1] - Tc_old[i,j,k]) 
+        Ft[i,j,k] += (qx[i+1,j,k] - qx[i,j,k])*_dx
+        Ft[i,j,k] += (qy[i,j+1,k] - qy[i,j,k])*_dy
+        Ft[i,j,k] += (qz[i,j,k+1] - qz[i,j,k])*_dz
+    end
+    return nothing
+end
+
+@parallel_indices (ix,iy,iz) function SetTemperatureBCs!(Tc_ex::Data.Array, qyS::Data.Number, _dy, kS, TN::Data.Number)
+
+    if (ix==1             && iy<=size(Tc_ex,2) && iz<=size(Tc_ex,3)) Tc_ex[1            ,iy,iz] =              Tc_ex[2              ,iy,iz]  end
+    if (ix==size(Tc_ex,1) && iy<=size(Tc_ex,2) && iz<=size(Tc_ex,3)) Tc_ex[size(Tc_ex,1),iy,iz] =              Tc_ex[size(Tc_ex,1)-1,iy,iz]  end
+    if (ix<=size(Tc_ex,1) && iy==1             && iz<=size(Tc_ex,3)) Tc_ex[ix            ,1,iz] = qyS/_dy/kS + Tc_ex[ix              ,2,iz]  end
+    # if (ix<=size(Tc_ex,1) && iy==1             && iz<=size(Tc_ex,3)) Tc_ex[ix            ,1,iz] = 2*TN - Tc_ex[ix              ,2,iz]  end
+    if (ix<=size(Tc_ex,1) && iy==size(Tc_ex,2) && iz<=size(Tc_ex,3)) Tc_ex[ix,size(Tc_ex,2),iz] =       2*TN - Tc_ex[ix,size(Tc_ex,2)-1,iz]  end
+    if (ix<=size(Tc_ex,1) && iy<=size(Tc_ex,2) && iz==1            ) Tc_ex[ix,iy,            1] =              Tc_ex[ix,iy,              2]  end
+    if (ix<=size(Tc_ex,1) && iy<=size(Tc_ex,2) && iz==size(Tc_ex,3)) Tc_ex[ix,iy,size(Tc_ex,3)] =              Tc_ex[ix,iy,size(Tc_ex,3)-1]  end
 
     return nothing
 end
 
-@parallel function UpdateT!(F::Data.Array, T::Data.Array, R::Data.Array, qx::Data.Array, qy::Data.Array, qz::Data.Array, _dt::Data.Number, dtau::Data.Number,
-                            _dx::Data.Number, _dy::Data.Number, _dz::Data.Number)
-
-    @all(F) = @all(R) + _dt*@inn(T) +  _dx*@d_xa(qx) + _dy*@d_ya(qy) + _dz*@d_za(qz)
-    @inn(T) = @inn(T) - dtau * @all(F)
-
+@parallel_indices (i,j,k) function ϕρfV2C(ϕρfc, ρfv, phv, ϕ0)
+    if i<=size(ϕρfc, 1) && j<=size(ϕρfc, 2) && k<=size(ϕρfc, 3) 
+        ϕρfc[i,j,k]  = 0.
+        ϕρfc[i,j,k] += 0.125*( ϕ(phv[i+0,j+0,k+0], ϕ0)*ρfv[i+0,j+0,k+0])
+        ϕρfc[i,j,k] += 0.125*( ϕ(phv[i+1,j+0,k+0], ϕ0)*ρfv[i+1,j+0,k+0])
+        ϕρfc[i,j,k] += 0.125*( ϕ(phv[i+0,j+1,k+0], ϕ0)*ρfv[i+0,j+1,k+0])
+        ϕρfc[i,j,k] += 0.125*( ϕ(phv[i+1,j+1,k+0], ϕ0)*ρfv[i+1,j+1,k+0])
+        ϕρfc[i,j,k] += 0.125*( ϕ(phv[i+0,j+0,k+1], ϕ0)*ρfv[i+0,j+0,k+1])
+        ϕρfc[i,j,k] += 0.125*( ϕ(phv[i+1,j+0,k+1], ϕ0)*ρfv[i+1,j+0,k+1])
+        ϕρfc[i,j,k] += 0.125*( ϕ(phv[i+0,j+1,k+1], ϕ0)*ρfv[i+0,j+1,k+1])
+        ϕρfc[i,j,k] += 0.125*( ϕ(phv[i+1,j+1,k+1], ϕ0)*ρfv[i+1,j+1,k+1])
+    end    
     return nothing
 end
 
-@parallel function ResidualDiffusion!(F::Data.Array, R::Data.Array, qx::Data.Array, qy::Data.Array, qz::Data.Array,
-                                      _dx::Data.Number, _dy::Data.Number, _dz::Data.Number)
+@parallel function InitDarcy!(ϕρf0, ϕρf)
+	@all(ϕρf0) = @all(ϕρf)
+	return nothing
+end
 
-	@all(F) = @all(R) +  _dx*@d_xa(qx) + _dy*@d_ya(qy) + _dz*@d_za(qz)
-
+@parallel function ComputeDarcyFlux!(qx::Data.Array, qy::Data.Array, qz::Data.Array, ρfv, kx::Data.Array, ky::Data.Array, kz::Data.Array, Pf::Data.Array,
+                                g, _dx::Data.Number, _dy::Data.Number, _dz::Data.Number)
+    @all(qx) = -@all(kx)*(_dx*@d_xi(Pf) )
+    @all(qy) = -@all(ky)*(_dy*@d_yi(Pf) - g*@av_xza(ρfv) )
+    @all(qz) = -@all(kz)*(_dz*@d_zi(Pf) )
     return nothing
 end
 
-@parallel function UpdateP!(F0::Data.Array, P::Data.Array, F::Data.Array, dampx::Data.Number, dtau::Data.Number)
+@parallel function ResidualFluidPressure!(F::Data.Array, ϕρfc, ϕρfc0, qx::Data.Array, qy::Data.Array, qz::Data.Array,
+                                _dt::Data.Number, _dx::Data.Number, _dy::Data.Number, _dz::Data.Number)
+	@all(F) = _dt*(@all(ϕρfc) -  @all(ϕρfc0)) +  _dx*@d_xa(qx) + _dy*@d_ya(qy) + _dz*@d_za(qz)
+    return nothing
+end
 
+@parallel function DampedUpdate!(F0::Data.Array, X::Data.Array, F::Data.Array, dampx::Data.Number, _dτ::Data.Number)
     @all(F0) = @all(F) + dampx*@all(F0)
-    @inn(P ) = @inn(P) - dtau *@all(F0)
-
+    @inn(X ) = @inn(X) -   _dτ*@all(F0)
     return nothing
 end
 
