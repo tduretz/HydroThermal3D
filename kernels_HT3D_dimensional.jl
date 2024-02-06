@@ -37,24 +37,12 @@ end
 
 ############################################## Kernels for HT code ##############################################
 
-@parallel function Init_vel!(Vx::Data.Array, Vy::Data.Array, Vz::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, Pc_ex::Data.Array, Ty::Data.Array, Ra::Data.Number, _dx::Data.Number, _dy::Data.Number, _dz::Data.Number)
-
-    @all(Vx) = -@all(kx) * _dx*@d_xi(Pc_ex)
-    @all(Vy) = -@all(ky) *(_dy*@d_yi(Pc_ex) - Ra*@all(Ty))
-    @all(Vz) = -@all(kz) * _dz*@d_zi(Pc_ex)
-
+@parallel function Init_vel!(Vx, Vy, Vz, qx, qy, qz, ρfv)
+    @all(Vx) = @all(qx) / @av_yza(ρfv)
+    @all(Vy) = @all(qy) / @av_xza(ρfv) 
+    @all(Vz) = @all(qz) / @av_xya(ρfv) 
     return nothing
 end
-
-# @parallel function InitDarcy!(Ty::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, Tc_ex::Data.Array, kfv::Data.Array, _dt::Data.Number)
-
-# 	@all(Ty) = @av_yi(Tc_ex)
-# 	@all(kx) = @av_yza(kfv)
-# 	@all(ky) = @av_xza(kfv)
-# 	@all(kz) = @av_xya(kfv)
-
-# 	return nothing
-# end
 
 @parallel function InitThermal!(Tc0, Tc_ex)
 	@all(Tc0) = @inn(Tc_ex)
@@ -156,13 +144,12 @@ end
     return nothing
 end
 
-@views function AdvectWithWeno5( Tc, Tc_ex, Tc_exxx, Told, dTdxm, dTdxp, Vxm, Vxp, Vym, Vyp, Vzm, Vzp, Vx, Vy, Vz, v1, v2, v3, v4, v5, kx, ky, kz, dt, _dx, _dy, _dz, Ttop, Tbot, Pc_ex, Ty, Ra )
+@views function AdvectWithWeno5( Tc, Tc_ex, Tc_exxx, Told, dTdxm, dTdxp, Vxm, Vxp, Vym, Vyp, Vzm, Vzp, Vx, Vy, Vz, v1, v2, v3, v4, v5, dt, _dx, _dy, _dz, Ttop, Tbot )
 
     @printf("Advecting with Weno5!\n")
     # Advection
     order = 2.0
 
-    @parallel Init_vel!(Vx, Vy, Vz, kx, ky, kz, Pc_ex, Ty, Ra, _dx, _dy, _dz)
     # Boundaries
     BC_type_W = 0
     BC_val_W  = 0.0

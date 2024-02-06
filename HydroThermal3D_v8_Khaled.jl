@@ -163,7 +163,7 @@ end
     Vizu      = 1
     Save      = 0
     fact      = 1
-    nt        = 0
+    nt        = 1000
     nout      = 10
     dt_fact   = 10
 
@@ -228,7 +228,7 @@ end
     Niy      = USE_MPI ? ny_g() : ncy                                                
     Niz      = USE_MPI ? nz_g() : ncz                                                
     dx, dy, dz = Lx/Nix, Ly/Niy, Lz/Niz                                            
-    dt       = min(dx,dy,dz)^2/6.1
+    dt       = 1e1/sc.t  # min(dx,dy,dz)^2/6.1
     _dx, _dy, _dz = 1.0/dx, 1.0/dy, 1.0/dz
     _dt      = 1.0/dt
     # PT iteration parameters
@@ -319,170 +319,141 @@ end
     (xv2,yv2,zv2)    = ([x for x=xv,y=yv,z=zv],    [y for x=xv,y=yv,z=zv],    [z for x=xv,y=yv,z=zv]   )
     @printf("Grid was set up!\n")
 
-    @time Tc_ex = Array(Tc_ex) # MAKE SURE ACTIVITY IS IN THE CPU:
-    @time Pc_ex = Array(Pc_ex)
-    @time phv   = Array(phv)   # Ensure it is temporarily a CPU array
-    @time phc   = Array(phc)   # Ensure it is temporarily a CPU array
-    @time SetInitialConditions_Khaled(phc, phv, geometry, Tc_ex, Pc_ex, xce2, yce2, zce2, xv2, yv2, zv2, Tbot, Ttop, Pbot, Ptop, xmax, ymax, zmax, Ly, sc)
-    @time Tc_ex = Data.Array(Tc_ex) # MAKE SURE ACTIVITY IS IN THE GPU
-    @time Pc_ex = Data.Array(Pc_ex) # MAKE SURE ACTIVITY IS IN THE GPU
-    @time phv   = Data.Array(phv)
-    @time phc   = Data.Array(phc)
+    Tc_ex = Array(Tc_ex) # MAKE SURE ACTIVITY IS IN THE CPU:
+    Pc_ex = Array(Pc_ex)
+    phv   = Array(phv)   # Ensure it is temporarily a CPU array
+    phc   = Array(phc)   # Ensure it is temporarily a CPU array
+    SetInitialConditions_Khaled(phc, phv, geometry, Tc_ex, Pc_ex, xce2, yce2, zce2, xv2, yv2, zv2, Tbot, Ttop, Pbot, Ptop, xmax, ymax, zmax, Ly, sc)
+    Tc_ex = Data.Array(Tc_ex) # MAKE SURE ACTIVITY IS IN THE GPU
+    Pc_ex = Data.Array(Pc_ex) # MAKE SURE ACTIVITY IS IN THE GPU
+    phv   = Data.Array(phv)
+    phc   = Data.Array(phc)
 
-    @parallel UpdateThermalConductivity( ktv, Tc_ex, phv, ϕ, sc.kt, sc.T )
-    @parallel SmoothConductivityV2C( kc,  ktv )
-    @parallel SmoothConductivityC2V( ktv, kc )
 
-    # Initial thermal field
-    @printf("Thermal solver\n");
-    @parallel ResetA!(Ft, Ft0)
-    @parallel InitConductivity!(kx, ky, kz, ktv)
-    @parallel InitThermal!(Tc0, Tc_ex)
-    for iter = 1:nitmax
-        @parallel SetTemperatureBCs!(Tc_ex, qyS, _dy, 1.0/sc.kt, Ttop)
-        @parallel ComputeFlux!(qx, qy, qz, kx, ky, kz, Tc_ex, _dx, _dy, _dz)
-        @parallel ResidualTemperature!(Ft, Tc_ex, Tc0, Pc_ex, phc, qx, qy, qz, _dt, _dx, _dy, _dz, ϕ, 0.0, sc.T, sc.σ, sc.C, sc.ρ)
-        @parallel DampedUpdate!(Ft0, Tc_ex, Ft, dampT, dtauT)
-        if (USE_MPI) update_halo!(Tc_ex); end
-        if mod(iter,nitout) == 0 || iter==1
-            nFt = mean_g(abs.(Ft[:]))/sqrt(ncx*ncy*ncz) * (sc.ρ*sc.C*sc.T/sc.t)
-            if (me==0) @printf("PT iter. #%05d - || Ft || = %2.2e\n", iter, nFt) end
-            if nFt<tolT break end
+    evol=[]; it1=0; time=0             #SO: added warmpup; added one call to tic(); toc(); to get them compiled (to be done differently later).
+    transient = 1.0
+
+    ## Action
+    for it = it1:nt
+
+        if it==0 
+            @printf("\n/******************* Initialisation step *******************\n")
+            transient = 0.0
+        else
+            @printf("\n/******************* Time step %05d *******************\n", it)
+            transient = 1.0
         end
-    end
 
-    @printf("Darcy solver\n");
-    @parallel ResetA!(Ft, Ft0)
-    @parallel UpdateHydroConductivity(kfv, ρfv, Tc_ex, Pc_ex, yv2, phv, sc.σ, sc.T, sc.L, sc.t, sc.ρ)
-    @parallel SmoothConductivityV2C( kc, kfv )
-    @parallel SmoothConductivityC2V( kfv, kc )
-    @parallel ϕρfV2C(ϕρfc, ρfv, phv, ϕ)
-    @parallel InitDarcy!(ϕρf0c, ϕρfc)
-    @parallel InitConductivity!(kx, ky, kz, kfv)
-    for iter = 1:nitmax
-        # @parallel UpdateHydroConductivity(kfv, ρfv, Tc_ex, Pc_ex, yv2, phv, sc.σ, sc.T, sc.L, sc.t, sc.ρ)
-        # @parallel ϕρfV2C(ϕρfc, ρfv, phv, ϕ)
-        # @parallel InitConductivity!(kx, ky, kz, kfv)
-        # @parallel SmoothConductivityV2C( kfc, kfv )
-        # @parallel SmoothConductivityC2V( kfv, kfc )
-        @parallel SetPressureBCs!(Pc_ex, Pbot, Ptop)
-        @parallel ComputeDarcyFlux!(qx, qy, qz, ρfv, kx, ky, kz, Pc_ex, g, _dx, _dy, _dz)
-        @parallel ResidualFluidPressure!(Ft, ϕρfc, ϕρf0c, qx, qy, qz, _dt, _dx, _dy, _dz)
-        @parallel DampedUpdate!(Ft0, Pc_ex, Ft, dampP, dtauP)
-        if (USE_MPI) update_halo!(Pc_ex); end
-        if mod(iter,nitout) == 0 || iter==1
-            mean_p = mean_g(Ft[:])
-            nFp = mean_g(abs.(Ft[:]))/sqrt(ncx*ncy*ncz) * (sc.ρ/sc.t)
-            if (me==0) @printf("PT iter. #%05d - || Fp || = %2.2e\n", iter, nFp) end
-            if nFp<tolP break end
+        @parallel UpdateThermalConductivity( ktv, Tc_ex, phv, ϕ, sc.kt, sc.T )
+        @parallel SmoothConductivityV2C( kc,  ktv )
+        @parallel SmoothConductivityC2V( ktv, kc )
+
+        @printf(">>>> Thermal solver\n");
+        @parallel ResetA!(Ft, Ft0)
+        @parallel InitConductivity!(kx, ky, kz, ktv)
+        @parallel InitThermal!(Tc0, Tc_ex)
+        for iter = 1:nitmax
+            @parallel SetTemperatureBCs!(Tc_ex, qyS, _dy, 1.0/sc.kt, Ttop)
+            @parallel ComputeFlux!(qx, qy, qz, kx, ky, kz, Tc_ex, _dx, _dy, _dz)
+            @parallel ResidualTemperature!(Ft, Tc_ex, Tc0, Pc_ex, phc, qx, qy, qz, _dt, _dx, _dy, _dz, ϕ, 0.0, sc.T, sc.σ, sc.C, sc.ρ)
+            @parallel DampedUpdate!(Ft0, Tc_ex, Ft, dampT, dtauT)
+            if (USE_MPI) update_halo!(Tc_ex); end
+            if mod(iter,nitout) == 0 || iter==1
+                nFt = mean_g(abs.(Ft[:]))/sqrt(ncx*ncy*ncz) * (sc.ρ*sc.C*sc.T/sc.t)
+                if (me==0) @printf("PT iter. #%05d - || Ft || = %2.2e\n", iter, nFt) end
+                if nFt<tolT break end
+            end
         end
-    end
 
-    @printf("Initial conditions were set up!\n")
-    @printf("min(Tc_ex) = %02.4e - max(Tc_ex) = %02.4e\n", minimum_g(Tc_ex)*sc.T, maximum_g(Tc_ex)*sc.T )
-    @printf("min(Pc_ex) = %02.4e - max(Pc_ex) = %02.4e\n", minimum_g(Pc_ex)*sc.σ, maximum_g(Pc_ex)*sc.σ )
-    @printf("min(ρfv)   = %02.4e - max(ρfv)   = %02.4e\n", minimum_g(ρfv)*sc.ρ, maximum_g(ρfv)*sc.ρ )
-    @printf("min(kfv)   = %02.4e - max(kfv)   = %02.4e\n", minimum_g(kfv)*sc.t, maximum_g(kfv)*sc.t )
+        @printf(">>>> Darcy solver\n");
+        @parallel ResetA!(Ft, Ft0)
+        @parallel UpdateHydroConductivity(kfv, ρfv, Tc_ex, Pc_ex, yv2, phv, sc.σ, sc.T, sc.L, sc.t, sc.ρ)
+        @parallel SmoothConductivityV2C( kc, kfv )
+        @parallel SmoothConductivityC2V( kfv, kc )
+        @parallel ϕρfV2C(ϕρfc, ρfv, phv, ϕ)
+        @parallel InitDarcy!(ϕρf0c, ϕρfc)
+        @parallel InitConductivity!(kx, ky, kz, kfv)
+        for iter = 1:nitmax
+            # @parallel UpdateHydroConductivity(kfv, ρfv, Tc_ex, Pc_ex, yv2, phv, sc.σ, sc.T, sc.L, sc.t, sc.ρ)
+            # @parallel ϕρfV2C(ϕρfc, ρfv, phv, ϕ)
+            # @parallel InitConductivity!(kx, ky, kz, kfv)
+            # @parallel SmoothConductivityV2C( kc, kfv )
+            # @parallel SmoothConductivityC2V( kfv, kc )
+            @parallel SetPressureBCs!(Pc_ex, Pbot, Ptop)
+            @parallel ComputeDarcyFlux!(qx, qy, qz, ρfv, kx, ky, kz, Pc_ex, g, _dx, _dy, _dz)
+            @parallel ResidualFluidPressure!(Ft, ϕρfc, ϕρf0c, qx, qy, qz, _dt, _dx, _dy, _dz)
+            @parallel DampedUpdate!(Ft0, Pc_ex, Ft, dampP, dtauP)
+            if (USE_MPI) update_halo!(Pc_ex); end
+            if mod(iter,nitout) == 0 || iter==1
+                nFp = mean_g(abs.(Ft[:]))/sqrt(ncx*ncy*ncz) * (sc.ρ/sc.t)
+                if (me==0) @printf("PT iter. #%05d - || Fp || = %2.2e\n", iter, nFp) end
+                if nFp<tolP break end
+            end
+        end
 
-    # evol=[]; it1=0; time=0             #SO: added warmpup; added one call to tic(); toc(); to get them compiled (to be done differently later).
-    # ## Action
-    # for it = it1:nt
+        if it>0
+            time  = time + dt;
+            @printf("\n-> it=%d, time=%.1e, dt=%.1e, \n", it, time, dt);
 
-    #     @printf("Thermal solver\n");
-    # 	@parallel ResetA!(Ft, Rt)
-    #     @parallel InitThermal!(Tc0, Tc_ex)
+            #---------------------------------------------------------------------
+            if Advection == 1
+                @parallel UpdateHydroConductivity(kfv, ρfv, Tc_ex, Pc_ex, yv2, phv, sc.σ, sc.T, sc.L, sc.t, sc.ρ)
+                @parallel Init_vel!(Vx, Vy, Vz, qx, qy, qz, ρfv)
+                AdvectWithWeno5( Tc, Tc_ex, Tc_exxx, Tc0, dTdxm, dTdxp, Vxm, Vxp, Vym, Vyp, Vzm, Vzp, Vx, Vy, Vz, v1, v2, v3, v4, v5, dt, _dx, _dy, _dz, Ttop, Tbot )
 
-    #     for iter = 1:nitmax
-    #         @parallel SetPressureBCs!(Tc_ex, Tbot, Ttop)
-    #         @parallel ComputeFlux!(qx, qy, qz, kx, ky, kz, Tc_ex, _dx, _dy, _dz)
-    #         @parallel ResidualTemperature!(Ft, Tc_ex, Tc0, Pc_ex, qx, qy, qz, _dt, _dx, _dy, _dz, ϕ, 0.0, sc.T, sc.σ, sc.C, sc.ρ)
-    #         @parallel DampedUpdate!(Ft0, Tc_ex, Ft, dampx, dtauT)
-    #         if (USE_MPI) update_halo!(Tc_ex); end
-    #         if mod(iter,nitout) == 1
-    #             nFt = mean_g(abs.(Ft[:]))/sqrt(ncx*ncy*ncz) * (sc.ρ*sc.C*sc.T/sc.t)
-    #             if (me==0) @printf("PT iter. #%05d - || Ft || = %2.2e\n", iter, nFt) end
-    #             if nFt<tolT break end
-    #         end
-    #     end
+                # Set dt for next step
+                dt  = dt_fact*1.0/6.1*min(dx,dy,dz) / max( maximum_g(abs.(Vx)), maximum_g(abs.(Vy)), maximum_g(abs.(Vz)))
+                _dt = 1.0/dt
+                @printf("Time step = %2.2e s\n", dt*sc.t)
+            end
+        end
 
-    #     @printf("min(Rt)    = %02.4e - max(Rt)    = %02.4e\n", minimum_g(Rt),    maximum_g(Rt)    )
-    #     @printf("min(Tc_ex) = %02.4e - max(Tc_ex) = %02.4e\n", minimum_g(Tc_ex), maximum_g(Tc_ex) )
+        @printf("min(Tc_ex) = %11.4e - max(Tc_ex) = %11.4e\n", minimum_g(Tc_ex)*sc.T, maximum_g(Tc_ex)*sc.T )
+        @printf("min(Pc_ex) = %11.4e - max(Pc_ex) = %11.4e\n", minimum_g(Pc_ex)*sc.σ, maximum_g(Pc_ex)*sc.σ )
+        @printf("min(ρfv)   = %11.4e - max(ρfv)   = %11.4e\n", minimum_g(ρfv)*sc.ρ,   maximum_g(ρfv)*sc.ρ )
+        @printf("min(kfv)   = %11.4e - max(kfv)   = %11.4e\n", minimum_g(kfv)*sc.t,   maximum_g(kfv)*sc.t )
+        @printf("min(Vy)    = %11.4e - max(Vy)    = %11.4e\n", minimum_g(Vy)*sc.V,    maximum_g(Vy)*sc.V )
 
-        # @printf("Darcy solver\n");
-    	# @parallel ResetA!(Ft, Ft0)
-    	# @parallel InitDarcy!(Ty, kx, ky, kz, Tc_ex, kfv, _dt)
-        # @parallel Compute_Rp!(Rp, ky, Ty, Ra, _dy)
+        #---------------------------------------------------------------------
+        if (Vizu == 1)
+            y_topo = Topography.( xce, geometry.y_plateau, geometry.a2, geometry.b2 )
+            # p = heatmap(xce*sc.L/1e3, yce*sc.L/1e3, (Tc_ex[:,:,2]'.*sc.T.-273.15), c=cgrad(:hot, rev=true), aspect_ratio=1) 
+            p = heatmap(xce*sc.L/1e3, yce*sc.L/1e3, (Pc_ex[:,:,2]'.*sc.σ./1e6), c=:jet1, aspect_ratio=1) 
+            # p = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, (ktv[:,:,2]'.*sc.kt), c=:jet1, aspect_ratio=1) 
+            # p = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, log10.(kfv[:,:,2]'.*sc.t), c=:jet1, aspect_ratio=1) 
+            # p = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, (ρfv[:,:,2]'.*sc.ρ), c=:jet1, aspect_ratio=1) 
+    
+            # X = Tc_ex[2:end-1,2:end-1,2:end-1]
+            #  heatmap(xc, yc, transpose(X[:,:,Int(ceil(ncz/2))]),c=:viridis,aspect_ratio=1) 
+            #  heatmap(xv*sc.L/1e3, yv*sc.L/1e3, phv[:,:,2]', c=:jet1, aspect_ratio=1) 
+            # p = heatmap(xc*sc.L/1e3, yc*sc.L/1e3, (Ft[:,:,1]'.*(sc.ρ/sc.t)), c=:jet1, aspect_ratio=1) 
+            #  heatmap(xv*sc.L/1e3, yv*sc.L/1e3, log10.(kf2[:,:,2]'.*sc.kf), c=:jet1, aspect_ratio=1) 
+            #   contourf(xc,yc,transpose(Ty[:,:,Int(ceil(ncz/2))])) ) # accede au sublot 111
+            #quiver(x,y,(f,f))
+            p = plot!(xce*sc.L/1e3, y_topo*sc.L/1e3, c=:white)
+            display(p)
+            @printf("Imaged sliced at z index %d over ncx = %d, ncy = %d, ncz = %d\n", Int(ceil(ncz/2)), ncx, ncy, ncz)
+            #  heatmap(transpose(T_v[:,Int(ceil(ny_v/2)),:]),c=:viridis,aspect_ratio=1) 
+        end
+        #---------------------------------------------------------------------
 
-    #     for iter = 0:nitmax
-    #         @parallel SetPressureBCs!(Pc_ex, Pbot, Ptop)
-    #         @parallel ComputeFlux!(qx, qy, qz, kx, ky, kz, Pc_ex, _dx, _dy, _dz)
-    #         @parallel ResidualFluid!(Ft, Rp, qx, qy, qz, _dx, _dy, _dz)
-            # @parallel UpdateP!(Ft0, Pc_ex, Ft, dampx, dtauP)
-
-            # if (USE_MPI) update_halo!(Pc_ex); end
-    #         if mod(iter,nitout) == 1
-    #             nFt = mean_g(abs.(Ft[:]))/sqrt(ncx*ncy*ncz)
-    #             if (me==0) @printf("PT iter. #%05d - || Ft || = %2.2e\n", iter, nFt) end
-    #             if nFt<tolP break end
-    #         end
-    #     end
-
-    #     @printf("min(Rp)    = %02.4e - max(Rp)    = %02.4e\n", minimum_g(Rp),    maximum_g(Rp)    )
-    #     @printf("min(Pc_ex) = %02.4e - max(Pc_ex) = %02.4e\n", minimum_g(Pc_ex), maximum_g(Pc_ex) )
-
-    #     time  = time + dt;
-    #     @printf("\n-> it=%d, time=%.1e, dt=%.1e, \n", it, time, dt);
-
-    #     #---------------------------------------------------------------------
-    #     if Advection == 1
-    #         AdvectWithWeno5( Tc, Tc_ex, Tc_exxx, Tc0, dTdxm, dTdxp, Vxm, Vxp, Vym, Vyp, Vzm, Vzp, Vx, Vy, Vz, v1, v2, v3, v4, v5, kx, ky, kz, dt, _dx, _dy, _dz, Ttop, Tbot, Pc_ex, Ty, Ra )
-    #     end
-
-    # 	# Set dt for next step
-    # 	dt  = dt_fact*1.0/6.1*min(dx,dy,dz) / max( maximum_g(abs.(Vx)), maximum_g(abs.(Vy)), maximum_g(abs.(Vz)))
-    # 	_dt = 1/dt
-    # 	@printf("Time step = %2.2e s\n", dt)
-
-    # end
-    #---------------------------------------------------------------------
-
-    if (Vizu == 1)
-        y_topo = Topography.( xce, geometry.y_plateau, geometry.a2, geometry.b2 )
-        # p = heatmap(xce*sc.L/1e3, yce*sc.L/1e3, (Tc_ex[:,:,2]'.*sc.T.-273.15), c=:jet1, aspect_ratio=1) 
-        p = heatmap(xce*sc.L/1e3, yce*sc.L/1e3, (Pc_ex[:,:,2]'.*sc.σ./1e6), c=:jet1, aspect_ratio=1) 
-        # p = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, (ktv[:,:,2]'.*sc.kt), c=:jet1, aspect_ratio=1) 
-        # p = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, log10.(kfv[:,:,2]'.*sc.t), c=:jet1, aspect_ratio=1) 
-        # p = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, (ρfv[:,:,2]'.*sc.ρ), c=:jet1, aspect_ratio=1) 
-
-        # X = Tc_ex[2:end-1,2:end-1,2:end-1]
-        #  heatmap(xc, yc, transpose(X[:,:,Int(ceil(ncz/2))]),c=:viridis,aspect_ratio=1) 
-        #  heatmap(xv*sc.L/1e3, yv*sc.L/1e3, phv[:,:,2]', c=:jet1, aspect_ratio=1) 
-        # p = heatmap(xc*sc.L/1e3, yc*sc.L/1e3, (Ft[:,:,1]'.*(sc.ρ/sc.t)), c=:jet1, aspect_ratio=1) 
-        #  heatmap(xv*sc.L/1e3, yv*sc.L/1e3, log10.(kf2[:,:,2]'.*sc.kf), c=:jet1, aspect_ratio=1) 
-        #   contourf(xc,yc,transpose(Ty[:,:,Int(ceil(ncz/2))])) ) # accede au sublot 111
-        #quiver(x,y,(f,f))
-        p = plot!(xce*sc.L/1e3, y_topo*sc.L/1e3, c=:white)
-        display(p)
-        @printf("Imaged sliced at z index %d over ncx = %d, ncy = %d, ncz = %d\n", Int(ceil(ncz/2)), ncx, ncy, ncz)
-        #  heatmap(transpose(T_v[:,Int(ceil(ny_v/2)),:]),c=:viridis,aspect_ratio=1) 
-    end
-
-    if ( Save==1 && mod(it,nout)==0 )
-        filename = @sprintf("./HT3DOutput%05d", it)
-        vtkfile  = vtk_grid(filename, Array(xc), Array(yc), Array(zc))
-        vtkfile["Pressure"]    = Array(Pc_ex[2:end-1,2:end-1,2:end-1])
-        vtkfile["Temperature"] = Array(Tc_ex[2:end-1,2:end-1,2:end-1])
-        VxC = 0.5*(Vx[2:end,:,:] + Vx[1:end-1,:,:])
-        VyC = 0.5*(Vy[:,2:end,:] + Vy[:,1:end-1,:])
-        VzC = 0.5*(Vz[:,:,2:end] + Vz[:,:,1:end-1])
-        # ktc = 1.0/8.0*(ktv[1:end-1,1:end-1,1:end-1] + ktv[2:end-0,2:end-0,2:end-0] + ktv[2:end-0,1:end-1,1:end-1] + ktv[1:end-1,2:end-0,1:end-1] + ktv[1:end-1,1:end-1,2:end-0] + ktv[1:end-1,2:end-0,2:end-0] + ktv[2:end-0,1:end-1,2:end-0] + ktv[2:end-0,2:end-0,1:end-1])
-        # kfc = 1.0/8.0*(kfv[1:end-1,1:end-1,1:end-1] + kfv[2:end-0,2:end-0,2:end-0] + kfv[2:end-0,1:end-1,1:end-1] + kfv[1:end-1,2:end-0,1:end-1] + kfv[1:end-1,1:end-1,2:end-0] + kfv[1:end-1,2:end-0,2:end-0] + kfv[2:end-0,1:end-1,2:end-0] + kfv[2:end-0,2:end-0,1:end-1])
-        Vc  = (Array(VxC),Array(VyC),Array(VzC))
-        vtkfile["Velocity"] = Vc
-        vtkfile["kThermal"] = Array(ktc)
-        vtkfile["kHydro"]   = Array(kfc)
-        outfiles = vtk_save(vtkfile)
-    end
+        if ( Save==1 && mod(it,nout)==0 )
+            filename = @sprintf("./HT3DOutput%05d", it)
+            vtkfile  = vtk_grid(filename, Array(xc), Array(yc), Array(zc))
+            vtkfile["Pressure"]    = Array(Pc_ex[2:end-1,2:end-1,2:end-1])
+            vtkfile["Temperature"] = Array(Tc_ex[2:end-1,2:end-1,2:end-1])
+            VxC = 0.5*(Vx[2:end,:,:] + Vx[1:end-1,:,:])
+            VyC = 0.5*(Vy[:,2:end,:] + Vy[:,1:end-1,:])
+            VzC = 0.5*(Vz[:,:,2:end] + Vz[:,:,1:end-1])
+            # ktc = 1.0/8.0*(ktv[1:end-1,1:end-1,1:end-1] + ktv[2:end-0,2:end-0,2:end-0] + ktv[2:end-0,1:end-1,1:end-1] + ktv[1:end-1,2:end-0,1:end-1] + ktv[1:end-1,1:end-1,2:end-0] + ktv[1:end-1,2:end-0,2:end-0] + ktv[2:end-0,1:end-1,2:end-0] + ktv[2:end-0,2:end-0,1:end-1])
+            # kfc = 1.0/8.0*(kfv[1:end-1,1:end-1,1:end-1] + kfv[2:end-0,2:end-0,2:end-0] + kfv[2:end-0,1:end-1,1:end-1] + kfv[1:end-1,2:end-0,1:end-1] + kfv[1:end-1,1:end-1,2:end-0] + kfv[1:end-1,2:end-0,2:end-0] + kfv[2:end-0,1:end-1,2:end-0] + kfv[2:end-0,2:end-0,1:end-1])
+            Vc  = (Array(VxC),Array(VyC),Array(VzC))
+            vtkfile["Velocity"] = Vc
+            vtkfile["kThermal"] = Array(ktc)
+            vtkfile["kHydro"]   = Array(kfc)
+            outfiles = vtk_save(vtkfile)
+        end
+        #---------------------------------------------------------------------
 
 end#it
 #
@@ -493,6 +464,6 @@ end#it
 # end
 # if (USE_MPI) finalize_global_grid(); end
 
-# end 
+end 
 
 @time HydroThermal3D()
