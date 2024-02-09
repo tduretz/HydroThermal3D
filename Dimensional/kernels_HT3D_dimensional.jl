@@ -97,6 +97,11 @@ end
     return nothing
 end
 
+@parallel function Multiply( a, b, c )
+    @all(a) = @all(b)*@all(c)
+    return nothing
+end
+
 
 @parallel function SmoothConductivityV2C( ktc, ktv )
     @all(ktc) = @av(ktv)
@@ -148,7 +153,7 @@ end
     return nothing
 end
 
-@parallel_indices (i,j,k) function ResidualTemperatureLinearised!(F::Data.Array, Tc_ex::Data.Array, Tc_old::Data.Array, ρC_eff, phc, qx, qy, qz, Qt, transient, _dt::Data.Number, _dx, _dy, _dz)
+@parallel_indices (i,j,k) function ResidualTemperatureLinearised!(F::Data.Array, Tc_ex::Data.Array, Tc_old::Data.Array, ρC_eff, phc, PC, qx, qy, qz, Qt, transient, _dt::Data.Number, _dx, _dy, _dz)
     if i<=size(F, 1) && j<=size(F, 2) && k<=size(F, 3)
         if phc[i,j,k] != 1.0  # if not air
             Q = 0.
@@ -160,6 +165,7 @@ end
             F[i,j,k] += (qy[i,j+1,k] - qy[i,j,k])*_dy
             F[i,j,k] += (qz[i,j,k+1] - qz[i,j,k])*_dz
             F[i,j,k] -= Q
+            F[i,j,k] /= PC[i,j,k]
         else
             F[i,j,k] = 0.
         end
@@ -182,7 +188,7 @@ end
     return nothing
 end
 
-@parallel_indices (i,j,k) function GershgorinThermal!( G::Data.Array, ρC_eff::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, transient, dt::Data.Number, dx::Data.Number, dy::Data.Number, dz::Data.Number )
+@parallel_indices (i,j,k) function GershgorinPoisson!( G::Data.Array, iPC, ρC_eff::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, transient, dt::Data.Number, dx::Data.Number, dy::Data.Number, dz::Data.Number )
     if i<=size(G, 1) && j<=size(G, 2) && k<=size(G, 3) 
         kW   = kx[i,j,k]
         kE   = kx[i+1,j,k]
@@ -191,7 +197,9 @@ end
         kF   = kz[i,j,k+1]
         kB   = kz[i,j,k]
         rhoC = ρC_eff[i,j,k]
-        G[i,j,k] = abs(kE ./ dx .^ 2) + abs(kW ./ dx .^ 2) + abs(kN ./ dy .^ 2) + abs((kN ./ dy - kS ./ dy) ./ dy) + abs(kB ./ dz .^ 2) + abs(kF ./ dz .^ 2) + abs((kB ./ dz + kF ./ dz) ./ dz + kS ./ dy .^ 2 + (kE ./ dx + kW ./ dx) ./ dx + rhoC * transient ./ dt)
+        G[i,j,k]    = abs(kE ./ dx .^ 2) + abs(kW ./ dx .^ 2) + abs(kN ./ dy .^ 2) + abs(kS ./ dy .^ 2) + abs(kB ./ dz .^ 2) + abs(kF ./ dz .^ 2) + abs((kB ./ dz + kF ./ dz) ./ dz + (kN ./ dy + kS ./ dy) ./ dy + (kE ./ dx + kW ./ dx) ./ dx + rhoC .* transient ./ dt)
+        iPC[i,j,k]  = ((kB ./ dz + kF ./ dz) ./ dz + (kN ./ dy + kS ./ dy) ./ dy + (kE ./ dx + kW ./ dx) ./ dx + rhoC .* transient ./ dt)
+        G[i,j,k]   /= ((kB ./ dz + kF ./ dz) ./ dz + (kN ./ dy + kS ./ dy) ./ dy + (kE ./ dx + kW ./ dx) ./ dx + rhoC .* transient ./ dt)
     end
     return nothing
 end
@@ -233,7 +241,7 @@ end
     return nothing
 end
 
-@parallel_indices (i,j,k) function ResidualFluidPressure!(F::Data.Array, phc, ϕρfc, ϕρfc0, qx::Data.Array, qy::Data.Array, qz::Data.Array, transient,
+@parallel_indices (i,j,k) function ResidualFluidPressure!(F::Data.Array, phc, ϕρfc, ϕρfc0, PC, qx::Data.Array, qy::Data.Array, qz::Data.Array, transient,
     _dt::Data.Number, _dx::Data.Number, _dy::Data.Number, _dz::Data.Number)
     if i<=size(F, 1) && j<=size(F, 2) && k<=size(F, 3)
         if phc[i,j,k] != 1.0      
@@ -241,6 +249,7 @@ end
             F[i,j,k] += (qx[i+1,j,k] - qx[i,j,k])*_dx
             F[i,j,k] += (qy[i,j+1,k] - qy[i,j,k])*_dy
             F[i,j,k] += (qz[i,j,k+1] - qz[i,j,k])*_dz
+            F[i,j,k] /= PC[i,j,k]
         else
             F[i,j,k] = 0.
         end
@@ -292,7 +301,7 @@ end
         kF   = kz[i,j,k+1]
         kB   = kz[i,j,k]
         rhoC = ϕdρdP[i,j,k]
-        G[i,j,k] = abs(kE ./ dx .^ 2) + abs(kW ./ dx .^ 2) + abs(kN ./ dy .^ 2) + abs((kN ./ dy - kS ./ dy) ./ dy) + abs(kB ./ dz .^ 2) + abs(kF ./ dz .^ 2) + abs((kB ./ dz + kF ./ dz) ./ dz + kS ./ dy .^ 2 + (kE ./ dx + kW ./ dx) ./ dx + rhoC * transient ./ dt)
+        G[i,j,k] = abs(kE ./ dx .^ 2) + abs(kW ./ dx .^ 2) + abs(kN ./ dy .^ 2) + abs(kS ./ dy .^ 2) + abs(kB ./ dz .^ 2) + abs(kF ./ dz .^ 2) + abs((kB ./ dz + kF ./ dz) ./ dz + (kN ./ dy + kS ./ dy) ./ dy + (kE ./ dx + kW ./ dx) ./ dx + + rhoC * transient ./ dt)
     end
     return nothing
 end

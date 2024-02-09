@@ -122,7 +122,7 @@ end
     Vizu       = 1
     Save       = 0
     fact       = 1
-    nt         = 300
+    nt         = 00
     nout       = 1
     dt_fact    = 10
     sticky_air = false
@@ -196,10 +196,10 @@ end
     _dx, _dy, _dz = 1.0/dx, 1.0/dy, 1.0/dz
     _dt      = 1.0/dt
     # PT iteration parameters
-    nitmax  = 1e3
+    nitmax  = 1e4
     nitout  = 100
-    tolT    = 1e-9  # Thermal solver
-    tolP    = 1e-14  # Darcy solver
+    tolT    = 1e-12  # Thermal solver
+    tolP    = 1e-17  # Darcy solver
     @info "Go go go!!"
 
     # Initialisation
@@ -207,12 +207,13 @@ end
     phv      =  @ones(ncx+1,ncy+1,ncz+1) # Phase on vertices
     Xc0      = @zeros(ncx+0,ncy+0,ncz+0) # Common for P and T
     Xcit     = @zeros(ncx+0,ncy+0,ncz+0) # Common for P and T
+    PC       =  @ones(ncx+0,ncy+0,ncz+0) # Common for P and T
     Fc       = @zeros(ncx+0,ncy+0,ncz+0) # Common for P and T
     Fcit     = @zeros(ncx+0,ncy+0,ncz+0) # Common for P and T
     Fc0      = @zeros(ncx+0,ncy+0,ncz+0) # Common for P and T
     ρC_ϕρ    = @zeros(ncx+0,ncy+0,ncz+0) # Common for P and T
     k_ρf     =  @ones(ncx+1,ncy+1,ncz+1) # Common for P and T
-    kc       =  @ones(ncx+0,ncy+0,ncz+0) # Common for P and T
+    dumc     =  @ones(ncx+0,ncy+0,ncz+0) # Common for P and T
     kx       = @zeros(ncx+1,ncy  ,ncz  ) # Common for P and T
     ky       = @zeros(ncx  ,ncy+1,ncz  ) # Common for P and T
     kz       = @zeros(ncx  ,ncy  ,ncz+1) # Common for P and T
@@ -299,16 +300,16 @@ end
 
         @printf(">>>> Thermal solver\n");
         @parallel ComputeThermalConductivity( k_ρf, Tc_ex, phv, ϕi, sc.kt, sc.T )
-        @parallel SmoothConductivityV2C( kc,  k_ρf )
-        @parallel SmoothConductivityC2V( k_ρf, kc )
+        @parallel SmoothConductivityV2C( dumc,  k_ρf )
+        @parallel SmoothConductivityC2V( k_ρf, dumc )
         @parallel InitConductivity!(kx, ky, kz, k_ρf)
         @parallel ComputeρCeffective!(ρC_ϕρ, Tc_ex, Pc_ex, phc, ϕi, sc.T, sc.σ, sc.C, sc.ρ)
 
-        @parallel GershgorinThermal!( Xc0, ρC_ϕρ, kx, ky, kz, transient, dt, dx, dy, dz )
+        @parallel GershgorinPoisson!( Xc0, PC, ρC_ϕρ, kx, ky, kz, transient, dt, dx, dy, dz )
         λmax     = maximum_g(Xc0)
         λmin     = λmax / 500
-        CFL_T    = 0.97
-        cfact    = 0.5
+        CFL_T    = 0.99
+        cfact    = 0.9
         Δτ       = 2.0./sqrt.(λmax)*CFL_T
         c        = 2.0*sqrt(λmin)*cfact
         h1, h2   = (2-c*Δτ)/(2+c*Δτ), 2*Δτ/(2+c*Δτ)
@@ -322,15 +323,16 @@ end
         for iter = 1:nitmax
 
             check = mod(iter,nitout) == 0 || iter<=2
-            if check @parallel SwapDYREL!(Xcit, Fcit, Pc_ex, Fc) end
+            if check @parallel SwapDYREL!(Xcit, Fcit, Tc_ex, Fc) end
             @parallel SetTemperatureBCs!(Tc_ex, phc, qyS, _dy, 1.0/sc.kt, Ttop,  geometry.y_plateau, geometry.a2, geometry.b2, dTdy, dx, dy, sticky_air)
             @parallel ComputeFlux!(qx, qy, qz, kx, ky, kz, Tc_ex, _dx, _dy, _dz)
-            @parallel ResidualTemperatureLinearised!(Fc, Tc_ex, Xc0, ρC_ϕρ, phc, qx, qy, qz, Qt, transient, _dt, _dx, _dy, _dz)
+            @parallel ResidualTemperatureLinearised!(Fc, Tc_ex, Xc0, ρC_ϕρ, phc, PC, qx, qy, qz, Qt, transient, _dt, _dx, _dy, _dz)
             @parallel DYRELUpdate!(Fc0, Tc_ex, Fc, h1, h2, Δτ)
             
             if (USE_MPI) update_halo!(Tc_ex); end
             if check
-                nF_abs = mean_g(abs.(Fc[:]))/sqrt(ncx*ncy*ncz) * (sc.ρ*sc.C*sc.T/sc.t)
+                @parallel Multiply( dumc, Fc, PC )
+                nF_abs = mean_g(abs.(dumc))/sqrt(ncx*ncy*ncz) * (sc.ρ*sc.C*sc.T/sc.t)
                 if iter==1 nF_ini = nF_abs end
                 nF_rel = nF_abs/nF_ini
                 if (me==0) @printf("PT iter. #%05d - || Fc_abs || = %2.2e - || Fc_rel || = %2.2e\n", iter, nF_abs, nF_rel) end
@@ -339,7 +341,7 @@ end
 
                 if iter>1
                     δT      = Δτ.*Fc0
-                    λmin    = abs(sum(.-(δT).*(Fc.-Fcit))/sum(δT.*δT) / 1.0 )
+                    λmin    = abs(sum(.-(δT).*(Fc.-Fcit))/sum(δT.*δT))
                     c       = 2.0*sqrt(λmin)*cfact
                     h1, h2  = (2-c*Δτ)/(2+c*Δτ), 2*Δτ/(2+c*Δτ)
                 end
@@ -350,16 +352,16 @@ end
 
         @printf(">>>> Darcy solver\n");
         @parallel ComputeHydroConductivity(k_ρf, Tc_ex, Pc_ex, phv, ymin, dy, k_fact, δ, sc.σ, sc.T, sc.L, sc.t, sc.η, 1)
-        @parallel SmoothConductivityV2C( kc, k_ρf )
-        @parallel SmoothConductivityC2V( k_ρf, kc )
+        @parallel SmoothConductivityV2C( dumc, k_ρf )
+        @parallel SmoothConductivityC2V( k_ρf, dumc )
         @parallel InitConductivity!(kx, ky, kz, k_ρf)
 
         @parallel ϕdρdP!(ρC_ϕρ, Tc_ex, Pc_ex, phc, ϕi, sc.ρ, sc.T, sc.σ )   
-        @parallel GershgorinHydro!( Xc0, ρC_ϕρ, kx, ky, kz, transient, dt, dx, dy, dz )
+        @parallel GershgorinPoisson!( Xc0, PC, ρC_ϕρ, kx, ky, kz, transient, dt, dx, dy, dz )
         λmax     = maximum_g(Xc0)
         λmin     = λmax / 500
-        CFL_P    = 0.95
-        cfact    = 0.75
+        CFL_P    = 1.0
+        cfact    = 0.9
         Δτ       = 2.0./sqrt.(λmax)*CFL_P
         c        = 2.0*sqrt(λmin)*cfact
         h1, h2   = (2-c*Δτ)/(2+c*Δτ), 2*Δτ/(2+c*Δτ)
@@ -378,12 +380,13 @@ end
             @parallel ϕρf(ρC_ϕρ, Tc_ex, Pc_ex, phc, ϕi, sc.ρ, sc.T, sc.σ)
             @parallel SetPressureBCs!(Pc_ex, phc, Pbot, Ptop, geometry.y_plateau, geometry.a2, geometry.b2, 1000/sc.ρ, g, dx, dy, sticky_air)
             @parallel ComputeDarcyFlux!(qx, qy, qz, k_ρf, kx, ky, kz, Pc_ex, g, _dx, _dy, _dz)
-            @parallel ResidualFluidPressure!(Fc, phc, ρC_ϕρ, Xc0, qx, qy, qz, transient, _dt, _dx, _dy, _dz)
+            @parallel ResidualFluidPressure!(Fc, phc, ρC_ϕρ, Xc0, PC, qx, qy, qz, transient, _dt, _dx, _dy, _dz)
             @parallel DYRELUpdate!(Fc0, Pc_ex, Fc, h1, h2, Δτ)
 
             if (USE_MPI) update_halo!(Pc_ex); end
             if check
-                nF_abs = mean_g(abs.(Fc[:]))/sqrt(ncx*ncy*ncz) * (sc.ρ/sc.t)
+                @parallel Multiply( dumc, Fc, PC )
+                nF_abs = mean_g(abs.(dumc))/sqrt(ncx*ncy*ncz) * (sc.ρ/sc.t)
                 if iter==1 nF_ini = nF_abs end
                 nF_rel = nF_abs/nF_ini
                 if (me==0) @printf("PT iter. #%05d - || Fc_abs || = %2.2e - || Fc_rel || = %2.2e\n", iter, nF_abs, nF_rel) end
@@ -392,7 +395,7 @@ end
 
                 if iter>1
                     δT   = Δτ.*Fc0
-                    λmin = abs(sum(.-(δT).*(Fc.-Fcit))/sum(δT.*δT) / 1.0 )
+                    λmin = abs(sum(.-(δT).*(Fc.-Fcit))/sum(δT.*δT))
                     c    = 2.0*sqrt(λmin)*cfact
                     h1, h2   = (2-c*Δτ)/(2+c*Δτ), 2*Δτ/(2+c*Δτ)
                 end
@@ -403,8 +406,8 @@ end
 
         # Compute velocity - here uses k_ρf = k/μ (does not include ϕ)
         @parallel ComputeHydroConductivity(k_ρf, Tc_ex, Pc_ex, phv, ymin, dy, k_fact, δ, sc.σ, sc.T, sc.L, sc.t, sc.η, 2)
-        @parallel SmoothConductivityV2C( kc, k_ρf )
-        @parallel SmoothConductivityC2V( k_ρf, kc )
+        @parallel SmoothConductivityV2C( dumc, k_ρf )
+        @parallel SmoothConductivityC2V( k_ρf, dumc )
         @parallel InitConductivity!(kx, ky, kz, k_ρf)
         @parallel ComputeFluidDensity(k_ρf, Tc_ex, Pc_ex, phv, sc.σ, sc.T, sc.ρ)
         @parallel ComputeDarcyFlux!(Vx, Vy, Vz, k_ρf, kx, ky, kz, Pc_ex, g, _dx, _dy, _dz)
