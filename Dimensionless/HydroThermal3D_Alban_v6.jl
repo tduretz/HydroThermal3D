@@ -15,8 +15,8 @@ else
     macro exp(args...)  esc(:(Base.exp($(args...)))) end
 end
 
-include("./tools/Macros.jl")  # Include macros - Cachemisère
-include("./tools/Weno5_Routines.jl")
+include("../tools/Macros.jl")  # Include macros - Cachemisère
+include("../tools/Weno5_Routines.jl")
 
 using Printf, Statistics, LinearAlgebra, Plots
 using HDF5

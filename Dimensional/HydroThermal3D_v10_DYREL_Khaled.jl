@@ -24,8 +24,8 @@ year = 365*3600*24
 
 ############################################## FUNCTIONS ##############################################
 
-include("./tools/Macros.jl")  # Include macros - Cachemisère
-include("./tools/Weno5_Routines.jl")
+include("../tools/Macros.jl")  # Include macros - Cachemisère
+include("../tools/Weno5_Routines.jl")
 include("./kernels_HT3D_dimensional.jl")
 
 kTs(T)        = 3.1138 − 0.0023*(T)

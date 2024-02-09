@@ -1,8 +1,8 @@
-# Adimensional 3D hydrothermal simulation code
+# 3D hydrothermal simulation code
 
 ### Governing equations 
 
-See inside `Dimensional` or `Dimensionless` folder for the 2 formaulations.
+See inside `Dimensional` or `Dimensionless` folder for the 2 formulations.
 
 
 ### Run the code locally
