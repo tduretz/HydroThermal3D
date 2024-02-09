@@ -1,37 +1,8 @@
 # Adimensional 3D hydrothermal simulation code
 
-### Governing equations
+### Governing equations 
 
-- Fluid continuity equation:
-
-$$ - \frac{\partial q^f_x}{\partial x} - \frac{\partial q^f_y}{\partial y} - \frac{\partial q^f_z}{\partial z} = \mathrm{Ra} \frac{\partial \left(k T \right)}{\partial y}$$
-
-The right-hand side is assembled in [kernels_HT3D.jl](/kernels_HT3D.jl) function `Compute_Rp!()`. There you can set a fluid pressure source or sink, for example. The residual of the equation is evaluated in [kernels_HT3D.jl](/kernels_HT3D.jl) function `ResidualDiffusion!()`.
-
-- Darcy flux:
-
-$$ q^f_i = - k^f \frac{\partial P}{\partial x_i} $$
-
-The Darcy flux vector components are evaluated in [kernels_HT3D.jl](/kernels_HT3D.jl) function `ComputeFlux!()`.
-
-- Heat equation:
-  
- $$  - \frac{\partial q^t_x}{\partial x} - \frac{\partial q^t_y}{\partial y} - \frac{\partial q^t_z}{\partial z} = \frac{\partial T}{\partial t} + v_x \frac{\partial T}{\partial x} + v_y \frac{\partial T}{\partial y} + v_z \frac{\partial T}{\partial z} \$$
-
-The residual of the equation is evaluated in [kernels_HT3D.jl](/kernels_HT3D.jl) function `ResidualDiffusion!()`. The first part of the right-hand side $\left(\frac{\partial T}{\partial t} \right)$ is assembled in [kernels_HT3D.jl](/kernels_HT3D.jl) function `InitThermal!()`. For now it's only $-\frac{T^{old}}{\Delta t}$, which arises from the time discretisation of $\frac{\partial T}{\partial t} \approx \frac{T - T^{old}}{\Delta t}$. This is the place where you can add a **heat source**, for example. The second part of the right-hand side is the advection term, it is solved seperately in [kernels_HT3D.jl](/kernels_HT3D.jl) function `AdvectWithWeno5!()`.
-
- - Heat flux:
-
-$$ q^t_i = - k^t \frac{\partial T}{\partial x_i} $$
-
-The heat flux vector components are evaluated in [kernels_HT3D.jl](/kernels_HT3D.jl) function `ComputeFlux!()`.
-
-   
-- Fluid velocity:
-
-$$ v_i = - k \frac{\partial}{\partial x_i} \left(P - \mathrm{Ra} T g_i \right)  $$
-
-where $g = [0 \; 1 \; 0]^T$. The components of the fluid velocity vector are evaluated in [kernels_HT3D.jl](/kernels_HT3D.jl) function `Init_Vel!()`.
+See inside `Dimensional` or `Dimensionless` folder for the 2 formaulations.
 
 
 ### Run the code locally
