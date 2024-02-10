@@ -118,12 +118,14 @@ end
     @info "Starting HydroThermal3D!"
 
     # Visualise
-    Advection  = 1
-    Vizu       = 1
-    Save       = 0
+    Hydro      = true
+    Thermal    = true
+    Advection  = true
+    Vizu       = true
+    Save       = false
     fact       = 1
-    nt         = 00
-    nout       = 1
+    nt         = 1000
+    nout       = 10
     dt_fact    = 10
     sticky_air = false
 
@@ -198,7 +200,7 @@ end
     # PT iteration parameters
     nitmax  = 1e4
     nitout  = 100
-    tolT    = 1e-12  # Thermal solver
+    tolT    = 1e-10  # Thermal solver
     tolP    = 1e-17  # Darcy solver
     @info "Go go go!!"
 
@@ -298,109 +300,113 @@ end
             transient = 1.0
         end
 
-        @printf(">>>> Thermal solver\n");
-        @parallel ComputeThermalConductivity( k_ρf, Tc_ex, phv, ϕi, sc.kt, sc.T )
-        @parallel SmoothConductivityV2C( dumc,  k_ρf )
-        @parallel SmoothConductivityC2V( k_ρf, dumc )
-        @parallel InitConductivity!(kx, ky, kz, k_ρf)
-        @parallel ComputeρCeffective!(ρC_ϕρ, Tc_ex, Pc_ex, phc, ϕi, sc.T, sc.σ, sc.C, sc.ρ)
+        if Thermal
+            @printf(">>>> Thermal solver\n");
+            @parallel ComputeThermalConductivity( k_ρf, Tc_ex, phv, ϕi, sc.kt, sc.T )
+            @parallel SmoothConductivityV2C( dumc,  k_ρf )
+            @parallel SmoothConductivityC2V( k_ρf, dumc )
+            @parallel InitConductivity!(kx, ky, kz, k_ρf)
+            @parallel ComputeρCeffective!(ρC_ϕρ, Tc_ex, Pc_ex, phc, ϕi, sc.T, sc.σ, sc.C, sc.ρ)
 
-        @parallel GershgorinPoisson!( Xc0, PC, ρC_ϕρ, kx, ky, kz, transient, dt, dx, dy, dz )
-        λmax     = maximum_g(Xc0)
-        λmin     = λmax / 500
-        CFL_T    = 0.99
-        cfact    = 0.9
-        Δτ       = 2.0./sqrt.(λmax)*CFL_T
-        c        = 2.0*sqrt(λmin)*cfact
-        h1, h2   = (2-c*Δτ)/(2+c*Δτ), 2*Δτ/(2+c*Δτ)
-        @show λmin, λmax
- 
-        @parallel ResetA!(Fc, Fc0)
-        @parallel InitThermal!(Xc0, Tc_ex)
-        nF_abs, nF_rel, nF_ini = 0., 0., 0.
+            @parallel GershgorinPoisson!( Xc0, PC, ρC_ϕρ, kx, ky, kz, transient, dt, dx, dy, dz )
+            λmax     = maximum_g(Xc0)
+            λmin     = λmax / 500
+            CFL_T    = 0.99
+            cfact    = 0.9
+            Δτ       = 2.0./sqrt.(λmax)*CFL_T
+            c        = 2.0*sqrt(λmin)*cfact
+            h1, h2   = (2-c*Δτ)/(2+c*Δτ), 2*Δτ/(2+c*Δτ)
+            @show λmin, λmax
+    
+            @parallel ResetA!(Fc, Fc0)
+            @parallel InitThermal!(Xc0, Tc_ex)
+            nF_abs, nF_rel, nF_ini = 0., 0., 0.
 
-        # Iteration loop
-        for iter = 1:nitmax
+            # Iteration loop
+            for iter = 1:nitmax
 
-            check = mod(iter,nitout) == 0 || iter<=2
-            if check @parallel SwapDYREL!(Xcit, Fcit, Tc_ex, Fc) end
-            @parallel SetTemperatureBCs!(Tc_ex, phc, qyS, _dy, 1.0/sc.kt, Ttop,  geometry.y_plateau, geometry.a2, geometry.b2, dTdy, dx, dy, sticky_air)
-            @parallel ComputeFlux!(qx, qy, qz, kx, ky, kz, Tc_ex, _dx, _dy, _dz)
-            @parallel ResidualTemperatureLinearised!(Fc, Tc_ex, Xc0, ρC_ϕρ, phc, PC, qx, qy, qz, Qt, transient, _dt, _dx, _dy, _dz)
-            @parallel DYRELUpdate!(Fc0, Tc_ex, Fc, h1, h2, Δτ)
-            
-            if (USE_MPI) update_halo!(Tc_ex); end
-            if check
-                @parallel Multiply( dumc, Fc, PC )
-                nF_abs = mean_g(abs.(dumc))/sqrt(ncx*ncy*ncz) * (sc.ρ*sc.C*sc.T/sc.t)
-                if iter==1 nF_ini = nF_abs end
-                nF_rel = nF_abs/nF_ini
-                if (me==0) @printf("PT iter. #%05d - || Fc_abs || = %2.2e - || Fc_rel || = %2.2e\n", iter, nF_abs, nF_rel) end
-                if (me==0) if isnan(nF_abs) error("Nan T...")      end end
-                if (me==0) if nF_rel>100    error("Diverged T...") end end
+                check = mod(iter,nitout) == 0 || iter<=2
+                if check @parallel SwapDYREL!(Xcit, Fcit, Tc_ex, Fc) end
+                @parallel SetTemperatureBCs!(Tc_ex, phc, qyS, _dy, 1.0/sc.kt, Ttop,  geometry.y_plateau, geometry.a2, geometry.b2, dTdy, dx, dy, sticky_air)
+                @parallel ComputeFlux!(qx, qy, qz, kx, ky, kz, Tc_ex, _dx, _dy, _dz)
+                @parallel ResidualTemperatureLinearised!(Fc, Tc_ex, Xc0, ρC_ϕρ, phc, PC, qx, qy, qz, Qt, transient, _dt, _dx, _dy, _dz)
+                @parallel DYRELUpdate!(Fc0, Tc_ex, Fc, h1, h2, Δτ)
+                
+                if (USE_MPI) update_halo!(Tc_ex); end
+                if check
+                    @parallel Multiply( dumc, Fc, PC )
+                    nF_abs = mean_g(abs.(dumc))/sqrt(ncx*ncy*ncz) * (sc.ρ*sc.C*sc.T/sc.t)
+                    if iter==1 nF_ini = nF_abs end
+                    nF_rel = nF_abs/nF_ini
+                    if (me==0) @printf("PT iter. #%05d - || Fc_abs || = %2.2e - || Fc_rel || = %2.2e\n", iter, nF_abs, nF_rel) end
+                    if (me==0) if isnan(nF_abs) error("Nan T...")      end end
+                    if (me==0) if nF_rel>100    error("Diverged T...") end end
 
-                if iter>1
-                    δT      = Δτ.*Fc0
-                    λmin    = abs(sum(.-(δT).*(Fc.-Fcit))/sum(δT.*δT))
-                    c       = 2.0*sqrt(λmin)*cfact
-                    h1, h2  = (2-c*Δτ)/(2+c*Δτ), 2*Δτ/(2+c*Δτ)
+                    if iter>1
+                        δT      = Δτ.*Fc0
+                        λmin    = abs(sum(.-(δT).*(Fc.-Fcit))/sum(δT.*δT))
+                        c       = 2.0*sqrt(λmin)*cfact
+                        h1, h2  = (2-c*Δτ)/(2+c*Δτ), 2*Δτ/(2+c*Δτ)
+                    end
+
+                    if (nF_abs<tolT || nF_rel<tolT)  break end
                 end
-
-                if (nF_abs<tolT || nF_rel<tolT)  break end
             end
         end
 
-        @printf(">>>> Darcy solver\n");
-        @parallel ComputeHydroConductivity(k_ρf, Tc_ex, Pc_ex, phv, ymin, dy, k_fact, δ, sc.σ, sc.T, sc.L, sc.t, sc.η, 1)
-        @parallel SmoothConductivityV2C( dumc, k_ρf )
-        @parallel SmoothConductivityC2V( k_ρf, dumc )
-        @parallel InitConductivity!(kx, ky, kz, k_ρf)
+        if Hydro
+            @printf(">>>> Darcy solver\n");
+            @parallel ComputeHydroConductivity(k_ρf, Tc_ex, Pc_ex, phv, ymin, dy, k_fact, δ, sc.σ, sc.T, sc.L, sc.t, sc.η, 1)
+            @parallel SmoothConductivityV2C( dumc, k_ρf )
+            @parallel SmoothConductivityC2V( k_ρf, dumc )
+            @parallel InitConductivity!(kx, ky, kz, k_ρf)
 
-        @parallel ϕdρdP!(ρC_ϕρ, Tc_ex, Pc_ex, phc, ϕi, sc.ρ, sc.T, sc.σ )   
-        @parallel GershgorinPoisson!( Xc0, PC, ρC_ϕρ, kx, ky, kz, transient, dt, dx, dy, dz )
-        λmax     = maximum_g(Xc0)
-        λmin     = λmax / 500
-        CFL_P    = 1.0
-        cfact    = 0.9
-        Δτ       = 2.0./sqrt.(λmax)*CFL_P
-        c        = 2.0*sqrt(λmin)*cfact
-        h1, h2   = (2-c*Δτ)/(2+c*Δτ), 2*Δτ/(2+c*Δτ)
-        @show λmin, λmax
+            @parallel ϕdρdP!(ρC_ϕρ, Tc_ex, Pc_ex, phc, ϕi, sc.ρ, sc.T, sc.σ )   
+            @parallel GershgorinPoisson!( Xc0, PC, ρC_ϕρ, kx, ky, kz, transient, dt, dx, dy, dz )
+            λmax     = maximum_g(Xc0)
+            λmin     = λmax / 500
+            CFL_P    = 1.0
+            cfact    = 0.9
+            Δτ       = 2.0./sqrt.(λmax)*CFL_P
+            c        = 2.0*sqrt(λmin)*cfact
+            h1, h2   = (2-c*Δτ)/(2+c*Δτ), 2*Δτ/(2+c*Δτ)
+            @show λmin, λmax
 
-        @parallel ResetA!(Fc, Fc0)
-        @parallel ϕρf(Xc0, Tc_ex, Pc_ex, phc, ϕi, sc.ρ, sc.T, sc.σ)
-        nF_abs, nF_rel, nF_ini = 0., 0., 0.
-        @parallel ComputeFluidDensity(k_ρf, Tc_ex, Pc_ex, phv, sc.σ, sc.T, sc.ρ)
+            @parallel ResetA!(Fc, Fc0)
+            @parallel ϕρf(Xc0, Tc_ex, Pc_ex, phc, ϕi, sc.ρ, sc.T, sc.σ)
+            nF_abs, nF_rel, nF_ini = 0., 0., 0.
+            @parallel ComputeFluidDensity(k_ρf, Tc_ex, Pc_ex, phv, sc.σ, sc.T, sc.ρ)
 
-        # Iteration loop
-        @time for iter = 1:nitmax
+            # Iteration loop
+            @time for iter = 1:nitmax
 
-            check = mod(iter,nitout) == 0 || iter<=2
-            if check @parallel SwapDYREL!(Xcit, Fcit, Pc_ex, Fc) end
-            @parallel ϕρf(ρC_ϕρ, Tc_ex, Pc_ex, phc, ϕi, sc.ρ, sc.T, sc.σ)
-            @parallel SetPressureBCs!(Pc_ex, phc, Pbot, Ptop, geometry.y_plateau, geometry.a2, geometry.b2, 1000/sc.ρ, g, dx, dy, sticky_air)
-            @parallel ComputeDarcyFlux!(qx, qy, qz, k_ρf, kx, ky, kz, Pc_ex, g, _dx, _dy, _dz)
-            @parallel ResidualFluidPressure!(Fc, phc, ρC_ϕρ, Xc0, PC, qx, qy, qz, transient, _dt, _dx, _dy, _dz)
-            @parallel DYRELUpdate!(Fc0, Pc_ex, Fc, h1, h2, Δτ)
+                check = mod(iter,nitout) == 0 || iter<=2
+                if check @parallel SwapDYREL!(Xcit, Fcit, Pc_ex, Fc) end
+                @parallel ϕρf(ρC_ϕρ, Tc_ex, Pc_ex, phc, ϕi, sc.ρ, sc.T, sc.σ)
+                @parallel SetPressureBCs!(Pc_ex, phc, Pbot, Ptop, geometry.y_plateau, geometry.a2, geometry.b2, 1000/sc.ρ, g, dx, dy, sticky_air)
+                @parallel ComputeDarcyFlux!(qx, qy, qz, k_ρf, kx, ky, kz, Pc_ex, g, _dx, _dy, _dz)
+                @parallel ResidualFluidPressure!(Fc, phc, ρC_ϕρ, Xc0, PC, qx, qy, qz, transient, _dt, _dx, _dy, _dz)
+                @parallel DYRELUpdate!(Fc0, Pc_ex, Fc, h1, h2, Δτ)
 
-            if (USE_MPI) update_halo!(Pc_ex); end
-            if check
-                @parallel Multiply( dumc, Fc, PC )
-                nF_abs = mean_g(abs.(dumc))/sqrt(ncx*ncy*ncz) * (sc.ρ/sc.t)
-                if iter==1 nF_ini = nF_abs end
-                nF_rel = nF_abs/nF_ini
-                if (me==0) @printf("PT iter. #%05d - || Fc_abs || = %2.2e - || Fc_rel || = %2.2e\n", iter, nF_abs, nF_rel) end
-                if (me==0) if isnan(nF_abs) error("Nan P...")      end end
-                if (me==0) if nF_rel>100    error("Diverged P...") end end
+                if (USE_MPI) update_halo!(Pc_ex); end
+                if check
+                    @parallel Multiply( dumc, Fc, PC )
+                    nF_abs = mean_g(abs.(dumc))/sqrt(ncx*ncy*ncz) * (sc.ρ/sc.t)
+                    if iter==1 nF_ini = nF_abs end
+                    nF_rel = nF_abs/nF_ini
+                    if (me==0) @printf("PT iter. #%05d - || Fc_abs || = %2.2e - || Fc_rel || = %2.2e\n", iter, nF_abs, nF_rel) end
+                    if (me==0) if isnan(nF_abs) error("Nan P...")      end end
+                    if (me==0) if nF_rel>100    error("Diverged P...") end end
 
-                if iter>1
-                    δT   = Δτ.*Fc0
-                    λmin = abs(sum(.-(δT).*(Fc.-Fcit))/sum(δT.*δT))
-                    c    = 2.0*sqrt(λmin)*cfact
-                    h1, h2   = (2-c*Δτ)/(2+c*Δτ), 2*Δτ/(2+c*Δτ)
+                    if iter>1
+                        δT   = Δτ.*Fc0
+                        λmin = abs(sum(.-(δT).*(Fc.-Fcit))/sum(δT.*δT))
+                        c    = 2.0*sqrt(λmin)*cfact
+                        h1, h2   = (2-c*Δτ)/(2+c*Δτ), 2*Δτ/(2+c*Δτ)
+                    end
+
+                    if (nF_abs<tolP || nF_rel<tolP)  break end
                 end
-
-                if (nF_abs<tolP || nF_rel<tolP)  break end
             end
         end
 
@@ -417,7 +423,7 @@ end
             @printf("\n-> it=%d, time=%.1e, dt=%.1e, \n", it, time, dt);
 
             #---------------------------------------------------------------------
-            if Advection == 1
+            if Advection
                 AdvectWithWeno5( Tc, Tc_ex, Tc_exxx, Xc0, dTdxm, dTdxp, Vxm, Vxp, Vym, Vyp, Vzm, Vzp, Vx, Vy, Vz, v1, v2, v3, v4, v5, dt, _dx, _dy, _dz, Ttop, Tbot )
 
                 # Set dt for next step
@@ -432,7 +438,7 @@ end
         @printf("min(Vy)    = %11.4e - max(Vy)    = %11.4e\n", minimum_g(Vy)*sc.V,    maximum_g(Vy)*sc.V )
 
         #---------------------------------------------------------------------
-        if (Vizu == 1)
+        if (Vizu && mod(it, nout) == 0)
             tMa = @sprintf("%03f", time*sc.t/1e6/year)
             y_topo = Topography.( xce, geometry.y_plateau, geometry.a2, geometry.b2 )
             p1 = heatmap(xce*sc.L/1e3, yce*sc.L/1e3, (Tc_ex[:,:,2]'.*sc.T.-273.15), c=cgrad(:hot, rev=true), aspect_ratio=1, clims=(0, 700), xlim=(0,120), ylim=(-30,5)) 
@@ -465,7 +471,7 @@ end
         end
         #---------------------------------------------------------------------
 
-        if ( Save==1 && mod(it,nout)==0 )
+        if ( Save && mod(it, nout) == 0 )
             filename = @sprintf("./HT3DOutput%05d", it)
             vtkfile  = vtk_grid(filename, Array(xc), Array(yc), Array(zc))
             vtkfile["Pressure"]    = Array(Pc_ex[2:end-1,2:end-1,2:end-1])
