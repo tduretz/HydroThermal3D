@@ -222,9 +222,11 @@ end
     qx       = @zeros(ncx+1,ncy  ,ncz  ) # Common for P and T
     qy       = @zeros(ncx  ,ncy+1,ncz  ) # Common for P and T
     qz       = @zeros(ncx  ,ncy  ,ncz+1) # Common for P and T
-    Vx       = @zeros(ncx+1,ncy  ,ncz  ) # Common for P and T
-    Vy       = @zeros(ncx  ,ncy+1,ncz  ) # Common for P and T
-    Vz       = @zeros(ncx  ,ncy  ,ncz+1) # Common for P and T
+    Vx       = @zeros(ncx+1,ncy  ,ncz  ) # Solution array 
+    Vy       = @zeros(ncx  ,ncy+1,ncz  ) # Solution array 
+    Vz       = @zeros(ncx  ,ncy  ,ncz+1) # Solution array 
+    Tc_ex    = @zeros(ncx+2,ncy+2,ncz+2) # Solution array
+    Pc_ex    = @zeros(ncx+2,ncy+2,ncz+2) # Solution array
     # Advection stuff
     Vxm      = @zeros(ncx+0,ncy+0,ncz+0)
     Vxp      = @zeros(ncx+0,ncy+0,ncz+0)
@@ -240,9 +242,7 @@ end
     dTdxp    = @zeros(ncx+0,ncy+0,ncz+0)
     dTdxm    = @zeros(ncx+0,ncy+0,ncz+0)
     Tc       = @zeros(ncx+0,ncy+0,ncz+0)
-    Tc_ex    = @zeros(ncx+2,ncy+2,ncz+2)
     Tc_exxx  = @zeros(ncx+6,ncy+6,ncz+6)
-    Pc_ex    = @zeros(ncx+2,ncy+2,ncz+2)
     @info "Memory was allocated!"
 
     # Pre-processing
