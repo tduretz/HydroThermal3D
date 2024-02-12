@@ -62,14 +62,14 @@ end
         Pv  = 1.0/8.0*(Pce[i+1,j+1,k+1] + Pce[i+1,j,k+1] + Pce[i,j+1,k+1] + Pce[i,j,k+1])
         Pv += 1.0/8.0*(Pce[i+1,j+1,k+0] + Pce[i+1,j,k+0] + Pce[i,j+1,k+0] + Pce[i,j,k+0])
         Pv *= scale_σ
-        y   = ymin + j*Δy
-        ρk_μ = ρf(Tv, Pv) * kF(y, δ) /  μf(Tv)
+        y   = ymin + (j-1)*Δy
+        ρk_μ = ρf_C(Tv - 273.15, Pv) * kF(y*scale_L, δ*scale_L) /  μf(Tv)
         if mode == 1
             kfv[i,j,k]  = ρk_μ / scale_t
         elseif mode == 2
-            kfv[i,j,k] = (kF(y, δ) /  μf(Tv)) / (scale_L^2/scale_η)
+            kfv[i,j,k] = (kF(y*scale_L, δ*scale_L) /  μf(Tv)) / (scale_L^2/scale_η)
         elseif mode == 3
-            kfv[i,j,k] =  kF(y, δ) /  scale_L^2
+            kfv[i,j,k] =  kF(y*scale_L, δ*scale_L) /  scale_L^2
         end
         # Fault
         if phv[i,j,k] == 2.0
@@ -88,7 +88,7 @@ end
         Pv  = 1.0/8.0*(Pce[i+1,j+1,k+1] + Pce[i+1,j,k+1] + Pce[i,j+1,k+1] + Pce[i,j,k+1])
         Pv += 1.0/8.0*(Pce[i+1,j+1,k+0] + Pce[i+1,j,k+0] + Pce[i,j+1,k+0] + Pce[i,j,k+0])
         Pv *= scale_σ
-        ρfv[i,j,k] = ρf(Tv, Pv) / scale_ρ
+        ρfv[i,j,k] = ρf_C(Tv - 273.15, Pv) / scale_ρ
         # Air
         if phv[i,j,k] == 1.0
             ρfv[i,j,k]  = 0.000  / scale_ρ
@@ -145,8 +145,8 @@ end
         if phc[i,j,k] != 1.0      
             Tsca          = Tc_ex[i+1,j+1,k+1]*sca_T
             Psca          = Pc_ex[i+1,j+1,k+1]*sca_σ
-            ρ_eff         = ϕ(phc[i,j,k],ϕi)*ρf(Tsca, Psca) + (1.0-ϕ(phc[i,j,k],ϕi))*ρs(Tsca)
-            Ceff          = ϕ(phc[i,j,k],ϕi)*Cf(Tsca)              + (1.0-ϕ(phc[i,j,k],ϕi))*Cs(Tsca)
+            ρ_eff         = ϕ(phc[i,j,k],ϕi)*ρf_C(Tsca-273.15, Psca) + (1.0-ϕ(phc[i,j,k],ϕi))*ρs(Tsca)
+            Ceff          = ϕ(phc[i,j,k],ϕi)*Cf(Tsca)                + (1.0-ϕ(phc[i,j,k],ϕi))*Cs(Tsca)
             ρC_eff[i,j,k] = (ρ_eff*Ceff)/sca_ρ/sca_C
         end
     end
@@ -306,84 +306,20 @@ end
     return nothing
 end
 
-######################################### ADVECT #########################################
-
-@views function AdvectWithWeno5( Tc, Tc_ex, Tc_exxx, Told, dTdxm, dTdxp, Vxm, Vxp, Vym, Vyp, Vzm, Vzp, Vx, Vy, Vz, v1, v2, v3, v4, v5, dt, _dx, _dy, _dz, Ttop, Tbot )
-
-    @printf("Advecting with Weno5!\n")
-    # Advection
-    order = 2.0
-
-    # Boundaries
-    BC_type_W = 0
-    BC_val_W  = 0.0
-    BC_type_E = 0
-    BC_val_E  = 0.0
-
-    BC_type_S = 1
-    BC_val_S  = Tbot
-    BC_type_N = 1
-    BC_val_N  = Ttop
-
-    BC_type_B = 0
-    BC_val_B  = 0.0
-    BC_type_F = 0
-    BC_val_F  = 0.0
-
-    # Upwind velocities
-    @parallel ResetA!(Vxm, Vxp)
-    @parallel VxPlusMinus!(Vxm, Vxp, Vx)
-
-    @parallel ResetA!(Vym, Vyp)
-    @parallel VyPlusMinus!(Vym, Vyp, Vy)
-
-    @parallel ResetA!(Vzm, Vzp)
-    @parallel VzPlusMinus!(Vzm, Vzp, Vz)
-
-    ########
-    @parallel Cpy_inn_to_all!(Tc, Tc_ex)
-    ########
-
-    # Advect in x direction
-    @parallel ArrayEqualArray!(Told, Tc)
-    for io=1:order
-        @parallel Boundaries_x_Weno5!(Tc_exxx, Tc, BC_type_W, BC_val_W, BC_type_E, BC_val_E)
-        @parallel Gradients_minus_x_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-        @parallel dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
-        @parallel Gradients_plus_x_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-        @parallel dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
-        @parallel Advect!(Tc, Vxp, dTdxm, Vxm, dTdxp, dt)
+@parallel_indices (i,j,k) function RayleighQuotientNumerator!( G::Data.Array, Fc0, Fcit, Fc, Δτ )
+    if i<=size(G, 1) && j<=size(G, 2) && k<=size(G, 3) 
+        δx       = Δτ*Fc0[i,j,k]
+        G[i,j,k] = .-δx.*(Fc[i,j,k] .- Fcit[i,j,k])
     end
-    @parallel TimeAveraging!(Tc, Told, order)
+    return nothing
+end
 
-    # Advect in y direction
-    @parallel ArrayEqualArray!(Told, Tc)
-    for io=1:order
-        @parallel Boundaries_y_Weno5!(Tc_exxx, Tc, BC_type_S, BC_val_S, BC_type_N, BC_val_N)
-        @parallel Gradients_minus_y_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-        @parallel dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
-        @parallel Gradients_plus_y_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-        @parallel dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
-        @parallel Advect!(Tc, Vyp, dTdxm, Vym, dTdxp, dt)
+@parallel_indices (i,j,k) function RayleighQuotientDenominator!( G::Data.Array, Fc0, Δτ )
+    if i<=size(G, 1) && j<=size(G, 2) && k<=size(G, 3) 
+        δx       = Δτ*Fc0[i,j,k]
+        G[i,j,k] = δx*δx
     end
-    @parallel TimeAveraging!(Tc, Told, order)
-
-    # Advect in z direction
-    @parallel ArrayEqualArray!(Told, Tc)
-    for io=1:order
-        @parallel Boundaries_z_Weno5!(Tc_exxx, Tc, BC_type_B, BC_val_B, BC_type_F, BC_val_F)
-        @parallel Gradients_minus_z_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-        @parallel dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
-        @parallel Gradients_plus_z_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
-        @parallel dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
-        @parallel Advect!(Tc, Vzp, dTdxm, Vzm, dTdxp, dt)
-    end
-    @parallel TimeAveraging!(Tc, Told, order)
-
-    ####
-    @parallel Cpy_all_to_inn!(Tc_ex, Tc)
-    ###
-    @printf("min(Tc_ex) = %02.4e - max(Tc_ex) = %02.4e\n", minimum(Tc_ex), maximum(Tc_ex) )
+    return nothing
 end
 
 #################################################
@@ -452,4 +388,82 @@ end
 #         Vz[i,j,k] = qz[i,j,k] / scalez
 #     end
 #     return nothing
+# end
+
+# @views function AdvectWithWeno5( Tc, Tc_ex, Tc_exxx, Told, dTdxm, dTdxp, Vxm, Vxp, Vym, Vyp, Vzm, Vzp, Vx, Vy, Vz, v1, v2, v3, v4, v5, dt, _dx, _dy, _dz, Ttop, Tbot )
+
+#     @printf("Advecting with Weno5!\n")
+#     # Advection
+#     order = 2.0
+
+#     # Boundaries
+#     BC_type_W = 0
+#     BC_val_W  = 0.0
+#     BC_type_E = 0
+#     BC_val_E  = 0.0
+
+#     BC_type_S = 1
+#     BC_val_S  = Tbot
+#     BC_type_N = 1
+#     BC_val_N  = Ttop
+
+#     BC_type_B = 0
+#     BC_val_B  = 0.0
+#     BC_type_F = 0
+#     BC_val_F  = 0.0
+
+#     # Upwind velocities
+#     @parallel ResetA!(Vxm, Vxp)
+#     @parallel VxPlusMinus!(Vxm, Vxp, Vx)
+
+#     @parallel ResetA!(Vym, Vyp)
+#     @parallel VyPlusMinus!(Vym, Vyp, Vy)
+
+#     @parallel ResetA!(Vzm, Vzp)
+#     @parallel VzPlusMinus!(Vzm, Vzp, Vz)
+
+#     ########
+#     @parallel Cpy_inn_to_all!(Tc, Tc_ex)
+#     ########
+
+#     # Advect in x direction
+#     @parallel ArrayEqualArray!(Told, Tc)
+#     for io=1:order
+#         @parallel Boundaries_x_Weno5!(Tc_exxx, Tc, BC_type_W, BC_val_W, BC_type_E, BC_val_E)
+#         @parallel Gradients_minus_x_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
+#         @parallel dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
+#         @parallel Gradients_plus_x_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
+#         @parallel dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
+#         @parallel Advect!(Tc, Vxp, dTdxm, Vxm, dTdxp, dt)
+#     end
+#     @parallel TimeAveraging!(Tc, Told, order)
+
+#     # Advect in y direction
+#     @parallel ArrayEqualArray!(Told, Tc)
+#     for io=1:order
+#         @parallel Boundaries_y_Weno5!(Tc_exxx, Tc, BC_type_S, BC_val_S, BC_type_N, BC_val_N)
+#         @parallel Gradients_minus_y_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
+#         @parallel dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
+#         @parallel Gradients_plus_y_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
+#         @parallel dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
+#         @parallel Advect!(Tc, Vyp, dTdxm, Vym, dTdxp, dt)
+#     end
+#     @parallel TimeAveraging!(Tc, Told, order)
+
+#     # Advect in z direction
+#     @parallel ArrayEqualArray!(Told, Tc)
+#     for io=1:order
+#         @parallel Boundaries_z_Weno5!(Tc_exxx, Tc, BC_type_B, BC_val_B, BC_type_F, BC_val_F)
+#         @parallel Gradients_minus_z_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
+#         @parallel dFdx_Weno5!(dTdxm, v1, v2, v3, v4, v5)
+#         @parallel Gradients_plus_z_Weno5!(v1, v2, v3, v4, v5, Tc_exxx, _dx, _dy, _dz)
+#         @parallel dFdx_Weno5!(dTdxp, v1, v2, v3, v4, v5)
+#         @parallel Advect!(Tc, Vzp, dTdxm, Vzm, dTdxp, dt)
+#     end
+#     @parallel TimeAveraging!(Tc, Told, order)
+
+#     ####
+#     @parallel Cpy_all_to_inn!(Tc_ex, Tc)
+#     ###
+#     @printf("min(Tc_ex) = %02.4e - max(Tc_ex) = %02.4e\n", minimum(Tc_ex), maximum(Tc_ex) )
 # end

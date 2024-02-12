@@ -28,58 +28,6 @@ include("./Weno5_Routines_v2.jl")
 
 ##########################################
 
-@views function AdvectWithWeno5_v2( Tc_ex, Tc_exxx, Told, Vx, Vy, Vz, dt, _dx, _dy, _dz, Ttop, Tbot )
-
-    @printf("Advecting with Weno5!\n")
-    # Advection
-    order = 2.0
-
-    # Boundaries
-    BC_type_W = 0
-    BC_val_W  = 0.0
-    BC_type_E = 0
-    BC_val_E  = 0.0
-
-    BC_type_S = 1
-    BC_val_S  = Tbot
-    BC_type_N = 1
-    BC_val_N  = Ttop
-
-    BC_type_B = 0
-    BC_val_B  = 0.0
-    BC_type_F = 0
-    BC_val_F  = 0.0
-
-    ########
-
-    # Advect in x direction
-    @parallel Cpy_inn_to_all!(Told, Tc_ex)
-    for io=1:order
-        @parallel Boundaries_x_Weno5!(Tc_exxx, Tc_ex, BC_type_W, BC_val_W, BC_type_E, BC_val_E)
-        @parallel Advect!(Tc_ex, Tc_exxx, Vx, 1, dt, _dx, _dy, _dz)
-    end
-    @parallel TimeAveraging!(Tc_ex, Told, order)
-
-    # Advect in y direction
-    @parallel Cpy_inn_to_all!(Told, Tc_ex)
-    for io=1:order
-        @parallel Boundaries_y_Weno5!(Tc_exxx, Tc_ex, BC_type_S, BC_val_S, BC_type_N, BC_val_N)
-        @parallel Advect!(Tc_ex, Tc_exxx, Vy, 2, dt, _dx, _dy, _dz)
-    end
-    @parallel TimeAveraging!(Tc_ex, Told, order)
-
-    # Advect in z direction
-    @parallel Cpy_inn_to_all!(Told, Tc_ex)
-    for io=1:order
-        @parallel Boundaries_z_Weno5!(Tc_exxx, Tc_ex, BC_type_B, BC_val_B, BC_type_F, BC_val_F)
-        @parallel Advect!(Tc_ex, Tc_exxx, Vz, 3, dt, _dx, _dy, _dz)
-    end
-    @parallel TimeAveraging!(Tc_ex, Told, order)
-
-    ####
-    @printf("min(Tc_ex) = %02.4e - max(Tc_ex) = %02.4e\n", minimum(Tc_ex), maximum(Tc_ex) )
-end
-
 ##########################################
 
 function TestAdvection()
@@ -153,11 +101,11 @@ function TestAdvection()
 
         time += dt
 
-        # Original routine requires "./Weno5_Routines.jl"
+        # Original routine requires including "./Weno5_Routines.jl"
         # AdvectWithWeno5( Tc, Tc_ex, Tc_exxx, Xc0, dTdxm, dTdxp, Vxm, Vxp, Vym, Vyp, Vzm, Vzp, Vx, Vy, Vz, v1, v2, v3, v4, v5, dt, _dx, _dy, _dz, Ttop, Tbot )
 
-        # New routine requires "./Weno5_Routines_v2.jl"
-        AdvectWithWeno5_v2( Tc_ex, Tc_exxx, Xc0, Vx, Vy, Vz, dt, _dx, _dy, _dz, Ttop, Tbot )
+        # New routine requires including "./Weno5_Routines_v2.jl"
+        @time AdvectWithWeno5_v2( Tc_ex, Tc_exxx, Xc0, Vx, Vy, Vz, dt, _dx, _dy, _dz, Ttop, Tbot )
 
         p1 = heatmap(xce, yce, (Tc_ex[:,:,2]'), c=cgrad(:hot, rev=true), aspect_ratio=:equal, xlim=(-1,1), ylims=(-1,1)) 
         display(plot(p1))
