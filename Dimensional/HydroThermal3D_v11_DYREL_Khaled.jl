@@ -39,14 +39,6 @@ dρdP_C(T_C,p) = -7.372e-15 * T_C .^ 3 + 8.036e-21 * T_C .^ 2 .* p + 7.485e-12 *
 kF(y,δ)       = 5e-16*exp(y/δ)
 ϕ(phase, ϕ0)  = phase == 2.0 ? 3*ϕ0 : ϕ0
 
-# function ϕ(phase, ϕ0)
-#     if phase == 2.0 # if in faults
-#         return ϕ = 3*ϕ0
-#     else
-#         return ϕ   = ϕ0
-#     end
-# end
-
 @views function Topography( x, y_plateau, a2, b2 )
     # x intersect between function and y = 0 (west part)
     xW = -b2/a2
@@ -125,7 +117,7 @@ end
     Vizu       = true
     Save       = true
     fact       = 1
-    nt         = 0000
+    nt         = 100
     nout       = 10
     dt_fact    = 10
     sticky_air = false
@@ -134,7 +126,7 @@ end
     sc   = scaling()
     sc.T = 500.0
     sc.V = 1e-9
-    sc.L = 100e3
+    sc.L = 700
     sc.η = 1e10
     scale_me!( sc )
 
@@ -423,65 +415,67 @@ end
             end
         end
 
-        # @printf("min(Tc_ex) = %11.4e - max(Tc_ex) = %11.4e\n", minimum_g(Tc_ex)*sc.T, maximum_g(Tc_ex)*sc.T )
-        # @printf("min(Pc_ex) = %11.4e - max(Pc_ex) = %11.4e\n", minimum_g(Pc_ex)*sc.σ, maximum_g(Pc_ex)*sc.σ )
-        # @printf("min(Vy)    = %11.4e - max(Vy)    = %11.4e\n", minimum_g(Vy)*sc.V,    maximum_g(Vy)*sc.V )
+        @printf("min(Tc_ex) = %11.4e - max(Tc_ex) = %11.4e\n", minimum_g(Tc_ex)*sc.T, maximum_g(Tc_ex)*sc.T )
+        @printf("min(Pc_ex) = %11.4e - max(Pc_ex) = %11.4e\n", minimum_g(Pc_ex)*sc.σ, maximum_g(Pc_ex)*sc.σ )
+        @printf("min(Vy)    = %11.4e - max(Vy)    = %11.4e\n", minimum_g(Vy)*sc.V,    maximum_g(Vy)*sc.V )
 
-        # #---------------------------------------------------------------------
-        # if (Vizu && mod(it, nout) == 0)
-        #     tMa = @sprintf("%03f", time*sc.t/1e6/year)
-        #     y_topo = Topography.( xce, geometry.y_plateau, geometry.a2, geometry.b2 )
-        #     p1 = heatmap(xce*sc.L/1e3, yce*sc.L/1e3, (Tc_ex[:,:,2]'.*sc.T.-273.15), c=cgrad(:hot, rev=true), aspect_ratio=1, clims=(0, 700), xlim=(0,120), ylim=(-30,5)) 
-        #     # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, phv[:,:,2]')
-        #     p2 = heatmap(xce*sc.L/1e3, yce*sc.L/1e3, (Pc_ex[:,:,2]'.*sc.σ./1e6), c=:jet1, aspect_ratio=1, xlim=(0,120), ylim=(-30,5)) 
-        #     p3 = heatmap(xc *sc.L/1e3, yv *sc.L/1e3, (Vy[:,:,2]'.*sc.V*100*year), c=:jet1, aspect_ratio=1, clims=(-27, 23), xlim=(0,120), ylim=(-30,5)) #title="Vy [cm/y]"*string(" @ t = ", tMa, " My" ) 
+        #---------------------------------------------------------------------
+        if (Vizu && mod(it, nout) == 0)
+            tMa = @sprintf("%03f", time*sc.t/1e6/year)
+            y_topo = Topography.( xce, geometry.y_plateau, geometry.a2, geometry.b2 )
+            p1 = heatmap(xce*sc.L/1e3, yce*sc.L/1e3, (Tc_ex[:,:,2]'.*sc.T.-273.15), c=cgrad(:hot, rev=true), aspect_ratio=1, clims=(0, 700), xlim=(0,120), ylim=(-30,5)) 
+            # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, phv[:,:,2]')
+            p2 = heatmap(xce*sc.L/1e3, yce*sc.L/1e3, (Pc_ex[:,:,2]'.*sc.σ./1e6), c=:jet1, aspect_ratio=1, xlim=(0,120), ylim=(-30,5)) 
+            p3 = heatmap(xc *sc.L/1e3, yv *sc.L/1e3, (Vy[:,:,2]'.*sc.V*100*year), c=:jet1, aspect_ratio=1, clims=(-27, 23), xlim=(0,120), ylim=(-30,5)) #title="Vy [cm/y]"*string(" @ t = ", tMa, " My" ) 
 
-        #     # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, phv[:,:,2]', c=:jet1, aspect_ratio=1) 
+            # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, phv[:,:,2]', c=:jet1, aspect_ratio=1) 
 
-        #     # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, (k_ρf[:,:,2]'.*sc.kt), c=:jet1, aspect_ratio=1) 
-        #     # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, (k_ρf[:,:,2]'.*sc.t), c=:jet1, aspect_ratio=1) 
+            # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, (k_ρf[:,:,2]'.*sc.kt), c=:jet1, aspect_ratio=1) 
+            # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, (k_ρf[:,:,2]'.*sc.t), c=:jet1, aspect_ratio=1) 
 
 
-        #     # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, log10.(k_ρf[:,:,2]'.*sc.t), c=:jet1, aspect_ratio=1) 
-        #     # X = Tc_ex[2:end-1,2:end-1,2:end-1]
-        #     #  heatmap(xc, yc, transpose(X[:,:,Int(ceil(ncz/2))]),c=:viridis,aspect_ratio=1) 
-        #     #heatmap(xc*sc.L/1e3, yc*sc.L/1e3, (Fc[:,:,1]'.*(sc.ρ/sc.t)), c=:jet1, aspect_ratio=1) 
-        #     #  heatmap(xv*sc.L/1e3, yv*sc.L/1e3, log10.(kf2[:,:,2]'.*sc.kf), c=:jet1, aspect_ratio=1) 
-        #     #   contourf(xc,yc,transpose(Ty[:,:,Int(ceil(ncz/2))])) ) # accede au sublot 111
-        #     #quiver(x,y,(f,f))
-        #     # p1 = plot!(xce*sc.L/1e3, y_topo*sc.L/1e3, c=:white)
-        #     _, izero =  findmin(abs.(yv))
-        #     # p1 = plot!()
-        #     # p2 = plot!(xlim=(0,120), ylim=(-30,5))
-        #     # p3 = plot!(xlim=(0,120), ylim=(-30,5))
-        #     p6 = plot(xc*sc.L/1e3, Vy[:,izero,2].*sc.V*100*year, label=:none)
-        #     display(plot(p1, p2, p3, layout=(3,1)))
-        #     @printf("Imaged sliced at z index %d over ncx = %d, ncy = %d, ncz = %d --- time is %02f Ma\n", Int(ceil(ncz/2)), ncx, ncy, ncz, time*sc.t/1e6/year)
-        #     #  heatmap(transpose(T_v[:,Int(ceil(ny_v/2)),:]),c=:viridis,aspect_ratio=1) 
-        # end
-        # #---------------------------------------------------------------------
+            # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, log10.(k_ρf[:,:,2]'.*sc.t), c=:jet1, aspect_ratio=1) 
+            # X = Tc_ex[2:end-1,2:end-1,2:end-1]
+            #  heatmap(xc, yc, transpose(X[:,:,Int(ceil(ncz/2))]),c=:viridis,aspect_ratio=1) 
+            #heatmap(xc*sc.L/1e3, yc*sc.L/1e3, (Fc[:,:,1]'.*(sc.ρ/sc.t)), c=:jet1, aspect_ratio=1) 
+            #  heatmap(xv*sc.L/1e3, yv*sc.L/1e3, log10.(kf2[:,:,2]'.*sc.kf), c=:jet1, aspect_ratio=1) 
+            #   contourf(xc,yc,transpose(Ty[:,:,Int(ceil(ncz/2))])) ) # accede au sublot 111
+            #quiver(x,y,(f,f))
+            # p1 = plot!(xce*sc.L/1e3, y_topo*sc.L/1e3, c=:white)
+            _, izero =  findmin(abs.(yv))
+            # p1 = plot!()
+            # p2 = plot!(xlim=(0,120), ylim=(-30,5))
+            # p3 = plot!(xlim=(0,120), ylim=(-30,5))
+            p6 = plot(xc*sc.L/1e3, Vy[:,izero,2].*sc.V*100*year, label=:none)
+            display(plot(p1, p2, p3, layout=(3,1)))
+            @printf("Imaged sliced at z index %d over ncx = %d, ncy = %d, ncz = %d --- time is %02f Ma\n", Int(ceil(ncz/2)), ncx, ncy, ncz, time*sc.t/1e6/year)
+            #  heatmap(transpose(T_v[:,Int(ceil(ny_v/2)),:]),c=:viridis,aspect_ratio=1) 
+        end
+        #---------------------------------------------------------------------
 
-        # if ( Save && mod(it, nout) == 0 )
-        #     filename = @sprintf("./HT3DOutput%05d", it)
-        #     vtkfile  = vtk_grid(filename, Array(xc), Array(yc), Array(zc))
-        #     @parallel Phase!( dumc, phc )
-        #     vtkfile["Phase"]       = Array(dumc)
-        #     @parallel Pressure!( dumc, Pc_ex, phc, sc.σ )
-        #     vtkfile["Pressure"]    = Array(dumc)
-        #     @parallel Temperature!( dumc, Tc_ex, phc, sc.T )
-        #     vtkfile["Temperature"] = Array(dumc)
-        #     @parallel Velocity!( Fc0, Fc, Fcit, Vx, Vy, Vz, phc, sc.V )
-        #     vtkfile["Velocity"]    = (Array(Fc0), Array(Fc), Array(Fcit))
-        #     @parallel EffectiveThermalConductivity!( dumc, Tc_ex, ϕi, phc, sc.T )
-        #     vtkfile["kThermal"]    = Array(dumc)
-        #     @parallel Permeability!( dumc, ymin, dy, phc, δ, sc.L )
-        #     vtkfile["Perm"]        = Array(dumc)
-        #     @parallel FluidDensity!( dumc, Tc_ex, Pc_ex, phc, sc.T, sc.σ )
-        #     vtkfile["Density"]     = Array(dumc)
-        #     @parallel Viscosity!( dumc, Tc_ex, phc, sc.T )
-        #     vtkfile["Viscosity"]   = Array(dumc)
-        #     outfiles = vtk_save(vtkfile)
-        # end
+        if ( Save && mod(it, nout) == 0 )
+            filename = @sprintf("./HT3DOutput%05d", it)
+            vtkfile  = vtk_grid(filename, Array(xc), Array(yc), Array(zc))
+            @parallel Phase!( dumc, phc )
+            vtkfile["Phase"]       = Array(dumc)
+            @parallel Pressure!( dumc, Pc_ex, phc, sc.σ )
+            vtkfile["Pressure"]    = Array(dumc)
+            @parallel Temperature!( dumc, Tc_ex, phc, sc.T )
+            vtkfile["Temperature"] = Array(dumc)
+            @parallel Velocity!( Fc0, Fc, Fcit, Vx, Vy, Vz, phc, sc.V )
+            vtkfile["Velocity"]    = (Array(Fc0), Array(Fc), Array(Fcit))
+            @parallel EffectiveThermalConductivity!( dumc, Tc_ex, ϕi, phc, sc.T )
+            vtkfile["kThermal"]    = Array(dumc)
+            @parallel Permeability!( dumc, ymin, dy, phc, δ, sc.L )
+            vtkfile["Perm"]        = Array(dumc)
+            @parallel FluidDensity!( dumc, Tc_ex, Pc_ex, phc, sc.T, sc.σ )
+            vtkfile["Density"]     = Array(dumc)
+            @parallel Viscosity!( dumc, Tc_ex, phc, sc.T )
+            vtkfile["Viscosity"]   = Array(dumc)
+            @parallel Peclet!( dumc, Tc_ex, Pc_ex, Vx, Vy, Vz, phc, ϕi, sc.T, sc.σ, sc.V, sc.L )
+            vtkfile["Peclet"]   = Array(dumc)
+            outfiles = vtk_save(vtkfile)
+        end
         #---------------------------------------------------------------------
 
 end#it
