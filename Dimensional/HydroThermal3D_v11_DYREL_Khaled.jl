@@ -117,7 +117,7 @@ end
     Vizu       = true
     Save       = true
     fact       = 1
-    nt         = 100
+    nt         = 1
     nout       = 10
     dt_fact    = 10
     sticky_air = false
