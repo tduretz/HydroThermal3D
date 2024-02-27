@@ -12,8 +12,7 @@ using ParallelStencil.FiniteDifferences3D
 else
     @init_parallel_stencil(Threads, Float64, 3)
     macro sqrt(args...) esc(:(Base.sqrt($(args...)))) end
-    macro exp(args...)  esc(:(Base.exp($(args...)))) end
-    
+    macro exp(args...)  esc(:(Base.exp($(args...)))) end 
 end
 
 using Printf, Statistics, LinearAlgebra#, Plots
