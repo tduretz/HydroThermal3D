@@ -16,7 +16,6 @@ else
 end
 
 using Printf, Statistics, LinearAlgebra, Plots
-# using HDF5
 using WriteVTK
 plotlyjs()
 
@@ -25,39 +24,33 @@ year = 365*3600*24
 ############################################## FUNCTIONS ##############################################
 
 include("../tools/Macros.jl")  # Include macros - Cachemisère
-include("../tools/Weno5_Routines.jl")
+include("../tools/Weno5_Routines_v2.jl")
 include("./kernels_HT3D_dimensional.jl")
+include("./kernels_HT3D_postprocessing.jl")
 
 kTs(T)        = 3.1138 − 0.0023*(T)
 kTf(T)        = -0.069 + 0.0012*(T)
 Cf(T)         = 1000 + 7.5*(T)
 Cs(T)         = 0.5915*(T) + 636.14
 ρs(T)         = 2800*(1 - (0.000024*(T - 293)))
-ρf(T,p)       = 1006+(7.424e-7*p)+(-0.3922*(T-273.15))+(-4.441e-15*p^2)+(4.547e-9*p*(T-273.15))+(-0.003774*(T-273.15)^2)+(1.451e-23*p^3)+(-1.793e-17*p^2*(T-273.15))+(7.485e-12*p*(T-273.15)^2)+(2.955e-6*(T-273.15)^3)+(-1.463e-32*p^4)+(1.361e-26*p^3*(T-273.15))+(4.018e-21*(p^2)*((T-273.15)^2))+(-7.372e-15*p*(T-273.15)^3)+(5.698e-11*(T-273.15)^4)    
 ρf_C(T_C,p)   = 1006+(7.424e-7*p)+(-0.3922*T_C)+(-4.441e-15*p^2)+(4.547e-9*p*T_C)+(-0.003774*T_C^2)+(1.451e-23*p^3)+(-1.793e-17*p^2*T_C)+(7.485e-12*p*T_C^2)+(2.955e-6*T_C^3)+(-1.463e-32*p^4)+(1.361e-26*p^3*T_C)+(4.018e-21*(p^2)*(T_C^2))+(-7.372e-15*p*T_C^3)+(5.698e-11*T_C^4)    
 dρdP_C(T_C,p) = -7.372e-15 * T_C .^ 3 + 8.036e-21 * T_C .^ 2 .* p + 7.485e-12 * T_C .^ 2 + 4.083e-26 * T_C .* p .^ 2 - 3.586e-17 * T_C .* p + 4.547e-9 * T_C - 5.852e-32 * p .^ 3 + 4.353e-23 * p .^ 2 - 8.882e-15 * p + 7.424e-7
 μf(T)         = 2.414e-5 * 10^(247.8/(T - 140.))
 kF(y,δ)       = 5e-16*exp(y/δ)
-function ϕ(phase, ϕ0)
-    if phase == 2.0 # if in faults
-        return ϕ = 3*ϕ0
-    else
-        return ϕ   = ϕ0
-    end
-end
+ϕ(phase, ϕ0)  = phase == 2.0 ? 3*ϕ0 : ϕ0
 
-@views function Topography( x, y_plateau, a2, b2 )
-    # x intersect beween function and y = 0 (west part)
-    xW = -b2/a2
-    # x intersect beween function and y = y_plateau (east part)
-    xE = (y_plateau - b2)/a2
+@views function Topography( x, y_plateau, a4, b4 )
+    # x intersect between function and y = 0 (west part)
+    xW = -b4/a4
+    # x intersect between function and y = y_plateau (east part)
+    xE = (y_plateau - b4)/a4
     # y0 = 0.0
-    if x<=xW 
+    if x<xW 
         y0 = 0.0
     elseif x>= xE
         y0 = y_plateau
     else
-        y0 = a2*x + b2
+        y0 = a4*x + b4
     end
     return y0
 end
@@ -79,6 +72,9 @@ end
         # Fault
         @. phv[ yv2 < (xv2*geom.a1 + geom.b1) && yv2 > (xv2*geom.a2 + geom.b2) && yv2 > (xv2*geom.a3 + geom.b3)  ] = 2.0
         @. phc[ yc2 < (xc2*geom.a1 + geom.b1) && yc2 > (xc2*geom.a2 + geom.b2) && yc2 > (xc2*geom.a3 + geom.b3)  ] = 2.0
+        #secondary fault F1
+        @. phv[ yv2 < (xv2*geom.a1_F1 + geom.b1_F1) && yv2 > (xv2*geom.a2_F1 + geom.b2_F1) && yv2 > (xv2*geom.a3_F1 + geom.b3_F1)  ] = 2.0
+        @. phc[ yc2 < (xc2*geom.a1_F1 + geom.b1_F1) && yc2 > (xc2*geom.a2_F1 + geom.b2_F1) && yc2 > (xc2*geom.a3_F1 + geom.b3_F1)  ] = 2.0
         # Pluton
         r_pluton = 3e3/sc.L
         @. phv[ ((xv2-xmax/2)^2 + (yv2-ymin/3)^2 + (zv2-zmax/2)^2) < r_pluton^2 ] = 3.0
@@ -122,9 +118,9 @@ end
     Thermal    = true
     Advection  = true
     Vizu       = true
-    Save       = false
+    Save       = true
     fact       = 1
-    nt         = 1000
+    nt         = 100
     nout       = 10
     dt_fact    = 10
     sticky_air = false
@@ -133,7 +129,7 @@ end
     sc   = scaling()
     sc.T = 500.0
     sc.V = 1e-9
-    sc.L = 100e3
+    sc.L = 700
     sc.η = 1e10
     scale_me!( sc )
 
@@ -157,15 +153,34 @@ end
 
     # Initial conditions: Draw Fault
     # top
+   # Initial conditions: Adjusted to show fault emerging at the surface y>0
+ # Initial conditions: Draw Fault
+    # top
     x1 = 68466.18089117216/sc.L; x2 = 31498.437753425103/sc.L
     y1 = 0.0/sc.L;               y2 = -16897.187956165293/sc.L
-    # bottom
-    x3 = 32000.0/sc.L; x4 = 69397.54576150524/sc.L
-    y3 =-17800.0/sc.L; y4 = 0.0/sc.L
-    # bottom
-    x5 = 32000.0/sc.L; x6 = 31498.437753425103/sc.L
-    y5 =-17800.0/sc.L; y6 = -16897.187956165293/sc.L
+# bottom
+    x3 = 32000.0/sc.L; x4 = 70434.72162146018/sc.L
+    y3 =-17800.0/sc.L; y4 = 500.0/sc.L
+    x5 = 70076.30839186268/sc.L; x6 = 69007.56622002952/sc.L
+    y5 = 500.0/sc.L; y6 = 0.0/sc.L
+    #midpoints
+    x_mid = (x3 + x2) / 2
+    y_mid = (y3 + y2) / 2
+
+    #secondary fault (F1)
+    # Secondary Fault - top
+    x1_F1 = 59112.694699794156/sc.L; x2_F1 = 62046.8414815947/sc.L
+    y1_F1 = 0.0/sc.L;                y2_F1 = -2934.1467818005385/sc.L
+    x3_F1 = 62143.899590932255/sc.L; x4_F1 = 59254.116056031475/sc.L
+    y3_F1 = -2889.783534900782/sc.L; y4_F1 = 0.0/sc.L
     
+    # Secondary Fault - bottom
+    x5_F1 = 62143.899590932255/sc.L; x6_F1 = 62046.8414815947/sc.L
+    y5_F1 = -2889.783534900782/sc.L; y6_F1 = -2934.1467818005385/sc.L
+    #top 
+    x7_F1 = 59112.694699794156/sc.L; x8_F1 = 59254.116056031475/sc.L
+    y7_F1 = 0.0/sc.L;                y8_F1 = 0.0/sc.L
+
     geometry = (
         y_plateau = 1*3e3/sc.L,
         # top
@@ -175,8 +190,25 @@ end
         a2 = ( y3-y4 ) / ( x3-x4 ),
         b2 = y3 - x3*(y3-y4)/(x3-x4),
         # bottom
-        a3 = ( y5-y6 ) / ( x5-x6 ),
-        b3 = y5 - x5*(y5-y6)/(x5-x6),
+        a3 = ( y2-y3 ) / ( x2-x3 ),
+        b3 = y2 - x3*(y2-y3)/(x2-x3),
+
+        a4 = (y_mid-y6) / (x_mid-x6),
+        b4 = y_mid - x_mid*(y_mid-y6)/(x_mid-x6),
+        
+        #a4 = (((y3+y2)/2)-y6) / (((x3+x2)/2)-x6),
+        #b4 = ((y3+y2)/2) - (((x3+x2)/2))*(((y3+y2)/2)-y6)/(((x3+x2)/2)-x6),
+
+        # Secondary Fault Geometry
+        a1_F1 = ( y1_F1 - y2_F1 ) / ( x1_F1 - x2_F1 ),
+        b1_F1 = y1_F1 - x1_F1*(y1_F1 - y2_F1)/(x1_F1 - x2_F1),
+
+        a2_F1 = ( y3_F1 - y4_F1 ) / ( x3_F1 - x4_F1 ),
+        b2_F1 = y3_F1 - x3_F1*(y3_F1 - y4_F1)/(x3_F1 - x4_F1),
+
+        a3_F1 = ( y5_F1 - y6_F1 ) / ( x5_F1 - x6_F1 ),
+        b3_F1 = y5_F1 - x5_F1*(y5_F1 - y6_F1)/(x5_F1 - x6_F1),
+       
     )
 
     @printf("Surface T = %03f, bottom T = %03f, qy = %03f\n", Ttop*sc.T, Tbot*sc.T, qyS*(sc.W/sc.L^2))
@@ -228,35 +260,20 @@ end
     Tc_ex    = @zeros(ncx+2,ncy+2,ncz+2) # Solution array
     Pc_ex    = @zeros(ncx+2,ncy+2,ncz+2) # Solution array
     # Advection stuff
-    Vxm      = @zeros(ncx+0,ncy+0,ncz+0)
-    Vxp      = @zeros(ncx+0,ncy+0,ncz+0)
-    Vym      = @zeros(ncx+0,ncy+0,ncz+0)
-    Vyp      = @zeros(ncx+0,ncy+0,ncz+0)
-    Vzm      = @zeros(ncx+0,ncy+0,ncz+0)
-    Vzp      = @zeros(ncx+0,ncy+0,ncz+0)
-    v1       = @zeros(ncx+0,ncy+0,ncz+0)
-    v2       = @zeros(ncx+0,ncy+0,ncz+0)
-    v3       = @zeros(ncx+0,ncy+0,ncz+0)
-    v4       = @zeros(ncx+0,ncy+0,ncz+0)
-    v5       = @zeros(ncx+0,ncy+0,ncz+0)
-    dTdxp    = @zeros(ncx+0,ncy+0,ncz+0)
-    dTdxm    = @zeros(ncx+0,ncy+0,ncz+0)
-    Tc       = @zeros(ncx+0,ncy+0,ncz+0)
     Tc_exxx  = @zeros(ncx+6,ncy+6,ncz+6)
     @info "Memory was allocated!"
 
     # Pre-processing
     if USE_MPI
-        xc  = [x_g(ix,dx,Fc)+dx/2 for ix=1:ncx];
-        yc  = [y_g(iy,dy,Fc)+dy/2 for iy=1:ncy];
-        zc  = [z_g(iz,dz,Fc)+dz/2 for iz=1:ncz];
-        xce = [x_g(ix,dx,Fc)-dx/2 for ix=1:ncx+2]; # ACHTUNG
-        yce = [y_g(iy,dy,Fc)-dy/2 for iy=1:ncy+2]; # ACHTUNG
-        zce = [z_g(iz,dz,Fc)-dz/2 for iz=1:ncz+2]; # ACHTUNG
-        xv  = [x_g(ix,dx,Fc) for ix=1:ncx];
-        yv  = [y_g(iy,dy,Fc) for iy=1:ncy];
-        zv  = [z_g(iz,dz,Fc) for iz=1:ncz];
-        # Question 2 - how to xv
+        xc  = [x_g(ix,dx,Fc)+dx/2 for ix=1:ncx]
+        yc  = [y_g(iy,dy,Fc)+dy/2 for iy=1:ncy]
+        zc  = [z_g(iz,dz,Fc)+dz/2 for iz=1:ncz]
+        xce = [x_g(ix,dx,Fc)-dx/2 for ix=1:ncx+2]
+        yce = [y_g(iy,dy,Fc)-dy/2 for iy=1:ncy+2]
+        zce = [z_g(iz,dz,Fc)-dz/2 for iz=1:ncz+2]
+        xv  = [x_g(ix,dx,Fc) for ix=1:ncx]
+        yv  = [y_g(iy,dy,Fc) for iy=1:ncy]
+        zv  = [z_g(iz,dz,Fc) for iz=1:ncz]
     else
         xc  = LinRange(xmin+dx/2, xmax-dx/2, ncx)
         yc  = LinRange(ymin+dy/2, ymax-dy/2, ncy)
@@ -290,7 +307,7 @@ end
     transient = 1.0
 
     ## Action
-    for it = it1:nt
+    @time for it = it1:nt
 
         if it==0 
             @printf("\n/******************* Initialisation step *******************\n")
@@ -343,10 +360,12 @@ end
                     if (me==0) if nF_rel>100    error("Diverged T...") end end
 
                     if iter>1
-                        δT      = Δτ.*Fc0
-                        λmin    = abs(sum(.-(δT).*(Fc.-Fcit))/sum(δT.*δT))
-                        c       = 2.0*sqrt(λmin)*cfact
-                        h1, h2  = (2-c*Δτ)/(2+c*Δτ), 2*Δτ/(2+c*Δτ)
+                        @parallel RayleighQuotientNumerator!( dumc, Fc0, Fcit, Fc, Δτ )
+                        λmin   = abs(sum_g(dumc)) 
+                        @parallel RayleighQuotientDenominator!( dumc, Fc0, Δτ )
+                        λmin  /= abs(sum_g(dumc))
+                        c      = 2.0*sqrt(λmin)*cfact
+                        h1, h2 = (2-c*Δτ)/(2+c*Δτ), 2*Δτ/(2+c*Δτ)
                     end
 
                     if (nF_abs<tolT || nF_rel<tolT)  break end
@@ -378,7 +397,7 @@ end
             @parallel ComputeFluidDensity(k_ρf, Tc_ex, Pc_ex, phv, sc.σ, sc.T, sc.ρ)
 
             # Iteration loop
-            @time for iter = 1:nitmax
+            for iter = 1:nitmax
 
                 check = mod(iter,nitout) == 0 || iter<=2
                 if check @parallel SwapDYREL!(Xcit, Fcit, Pc_ex, Fc) end
@@ -399,10 +418,12 @@ end
                     if (me==0) if nF_rel>100    error("Diverged P...") end end
 
                     if iter>1
-                        δT   = Δτ.*Fc0
-                        λmin = abs(sum(.-(δT).*(Fc.-Fcit))/sum(δT.*δT))
-                        c    = 2.0*sqrt(λmin)*cfact
-                        h1, h2   = (2-c*Δτ)/(2+c*Δτ), 2*Δτ/(2+c*Δτ)
+                        @parallel RayleighQuotientNumerator!( dumc, Fc0, Fcit, Fc, Δτ )
+                        λmin   = abs(sum_g(dumc)) 
+                        @parallel RayleighQuotientDenominator!( dumc, Fc0, Δτ )
+                        λmin  /= abs(sum_g(dumc))
+                        c      = 2.0*sqrt(λmin)*cfact
+                        h1, h2 = (2-c*Δτ)/(2+c*Δτ), 2*Δτ/(2+c*Δτ)
                     end
 
                     if (nF_abs<tolP || nF_rel<tolP)  break end
@@ -424,7 +445,7 @@ end
 
             #---------------------------------------------------------------------
             if Advection
-                AdvectWithWeno5( Tc, Tc_ex, Tc_exxx, Xc0, dTdxm, dTdxp, Vxm, Vxp, Vym, Vyp, Vzm, Vzp, Vx, Vy, Vz, v1, v2, v3, v4, v5, dt, _dx, _dy, _dz, Ttop, Tbot )
+                AdvectWithWeno5_v2( Tc_ex, Tc_exxx, Xc0, Vx, Vy, Vz, dt, _dx, _dy, _dz, Ttop, Tbot )
 
                 # Set dt for next step
                 dt  = dt_fact*1.0/6.1*min(dx,dy,dz) / max( maximum_g(abs.(Vx)), maximum_g(abs.(Vy)), maximum_g(abs.(Vz)))
@@ -474,17 +495,24 @@ end
         if ( Save && mod(it, nout) == 0 )
             filename = @sprintf("./HT3DOutput%05d", it)
             vtkfile  = vtk_grid(filename, Array(xc), Array(yc), Array(zc))
-            vtkfile["Pressure"]    = Array(Pc_ex[2:end-1,2:end-1,2:end-1])
-            vtkfile["Temperature"] = Array(Tc_ex[2:end-1,2:end-1,2:end-1])
-            VxC = 0.5*(Vx[2:end,:,:] + Vx[1:end-1,:,:])
-            VyC = 0.5*(Vy[:,2:end,:] + Vy[:,1:end-1,:])
-            VzC = 0.5*(Vz[:,:,2:end] + Vz[:,:,1:end-1])
-            # ktc = 1.0/8.0*(k_ρf[1:end-1,1:end-1,1:end-1] + k_ρf[2:end-0,2:end-0,2:end-0] + k_ρf[2:end-0,1:end-1,1:end-1] + k_ρf[1:end-1,2:end-0,1:end-1] + k_ρf[1:end-1,1:end-1,2:end-0] + k_ρf[1:end-1,2:end-0,2:end-0] + k_ρf[2:end-0,1:end-1,2:end-0] + k_ρf[2:end-0,2:end-0,1:end-1])
-            # kfc = 1.0/8.0*(k_ρf[1:end-1,1:end-1,1:end-1] + k_ρf[2:end-0,2:end-0,2:end-0] + k_ρf[2:end-0,1:end-1,1:end-1] + k_ρf[1:end-1,2:end-0,1:end-1] + k_ρf[1:end-1,1:end-1,2:end-0] + k_ρf[1:end-1,2:end-0,2:end-0] + k_ρf[2:end-0,1:end-1,2:end-0] + k_ρf[2:end-0,2:end-0,1:end-1])
-            Vc  = (Array(VxC),Array(VyC),Array(VzC))
-            vtkfile["Velocity"] = Vc
-            vtkfile["kThermal"] = Array(ktc)
-            vtkfile["kHydro"]   = Array(kfc)
+            @parallel Phase!( dumc, phc )
+            vtkfile["Phase"]       = Array(dumc)
+            @parallel Pressure!( dumc, Pc_ex, phc, sc.σ )
+            vtkfile["Pressure"]    = Array(dumc)
+            @parallel Temperature!( dumc, Tc_ex, phc, sc.T )
+            vtkfile["Temperature"] = Array(dumc)
+            @parallel Velocity!( Fc0, Fc, Fcit, Vx, Vy, Vz, phc, sc.V )
+            vtkfile["Velocity"]    = (Array(Fc0), Array(Fc), Array(Fcit))
+            @parallel EffectiveThermalConductivity!( dumc, Tc_ex, ϕi, phc, sc.T )
+            vtkfile["kThermal"]    = Array(dumc)
+            @parallel Permeability!( dumc, ymin, dy, phc, δ, sc.L )
+            vtkfile["Perm"]        = Array(dumc)
+            @parallel FluidDensity!( dumc, Tc_ex, Pc_ex, phc, sc.T, sc.σ )
+            vtkfile["Density"]     = Array(dumc)
+            @parallel Viscosity!( dumc, Tc_ex, phc, sc.T )
+            vtkfile["Viscosity"]   = Array(dumc)
+            @parallel Peclet!( dumc, Tc_ex, Pc_ex, Vx, Vy, Vz, phc, ϕi, sc.T, sc.σ, sc.V, sc.L )
+            vtkfile["Peclet"]   = Array(dumc)
             outfiles = vtk_save(vtkfile)
         end
         #---------------------------------------------------------------------
@@ -500,4 +528,4 @@ end#it
 
 end 
 
-@time HydroThermal3D()
+HydroThermal3D()
