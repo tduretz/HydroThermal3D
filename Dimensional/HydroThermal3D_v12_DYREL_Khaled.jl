@@ -124,7 +124,7 @@ end
     Vizu       = true
     Save       = true
     fact       = 1
-    nt         = 1
+    nt         = 100
     nout       = 10
     dt_fact    = 10
     sticky_air = false
@@ -140,7 +140,7 @@ end
     # Physics
     xmin     = -0.0/sc.L;  xmax = 120.0e3/sc.L;   Lx = xmax - xmin
     ymin     = -30e3/sc.L; ymax =    10e3/sc.L;   Ly = ymax - ymin
-    zmin     = -0.00/sc.L; zmax =   1.0e3/sc.L;   Lz = zmax - zmin
+    zmin     = -20.00/sc.L; zmax =   20e3/sc.L;   Lz = zmax - zmin
     dT       = 600.0/sc.T
     Ttop     = 293.0/sc.T
     Tbot     = Ttop + dT
@@ -223,7 +223,8 @@ end
     fact     = 16
     ncx      = fact*32-6
     ncy      = fact*8 -6
-    ncz      = 3#fact*32-6
+    ncz      = fact*8 -6
+    # ncz      = 3#fact*32-6
     # Preprocessing
     if (USE_MPI) me, dims, nprocs, coords, comm = init_global_grid(ncx, ncy, ncz; dimx=2, dimy=2, dimz=2);             
     else         me, dims, nprocs, coords       = (0, [1,1,1], 1, [0,0,0]);
