@@ -29,7 +29,7 @@ The heat flux vector components are evaluated in [kernels_HT3D.jl](/kernels_HT3D
    
 - Fluid velocity:
 
-$$ v_i = - k \frac{\partial}{\partial x_i} \left(P - \mathrm{Ra} T g_i \right)  $$
+$$ v_i = - k \frac{\partial P}{\partial x_i} - \mathrm{Ra} T g_i  $$
 
 where $g = [0 \; 1 \; 0]^T$. The components of the fluid velocity vector are evaluated in [kernels_HT3D.jl](/kernels_HT3D.jl) function `Init_Vel!()`.
 
