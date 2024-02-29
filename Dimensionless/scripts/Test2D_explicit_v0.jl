@@ -1,10 +1,9 @@
 using Plots
-plotlyjs()
+gr()
 
 function main()
 
-    Ra       = 800.0 
-    g        = -1.0
+    Ra       = 1600.0 
     dT       = 1.0
     Ttop     = 0.0
     Tbot     = Ttop + dT
@@ -19,8 +18,8 @@ function main()
     xmin     = -0.5;  xmax =  0.5; Lx = xmax - xmin
     ymin     = -0.5;  ymax =  0.5; Ly = ymax - ymin
     # Numerics
-    nt       = 100000
-    nout     = 1000
+    nt       = 1
+    nout     = 1
     ncx      = 2*32-6
     ncy      = 2*32-6
     dx, dy   = Lx/ncx, Ly/ncy  
@@ -44,51 +43,52 @@ function main()
     dPdy = -1.0
     @. T   .= xce*0. .+ (yce.-ymax)'.*dTdy
     @. P   .= xce*0. .+ (yce.-ymax)'.*dPdy
-    @. T  .+= exp.(.-(xce.^2 .+ ((yce+ymax/2).^2)') ./ 0.005)
+    @. T  .+= exp.(.-(xce.^2 .+ ((yce+ymax/2).^2)') .*200)
 
     for it = 1:nt
 
-        T[  1,:] .= T[    2,:]
-        T[end,:] .= T[end-1,:]
-        T[:,  1] .= 2*Tbot .- T[:,    2]
-        T[:,end] .= 2*Ttop .- T[:,end-1]
+        # T[  1,:] .= T[    2,:]
+        # T[end,:] .= T[end-1,:]
+        # T[:,  1] .= 2*Tbot .- T[:,    2]
+        # T[:,end] .= 2*Ttop .- T[:,end-1]
 
-        P[  1,:] .= P[    2,:]
-        P[end,:] .= P[end-1,:]
-        P[:,  1] .= P[:,    2]
-        P[:,end] .= P[:,end-1]
+        # P[  1,:] .= P[    2,:]
+        # P[end,:] .= P[end-1,:]
+        # P[:,  1] .= P[:,    2]
+        # P[:,end] .= P[:,end-1]
 
-        @. Vx .= -k*(  ( P[2:end-0,2:end-1] - P[1:end-1,2:end-1])  )/dx
-        @. Vy .= -k*(  ( P[2:end-1,2:end-0] - P[2:end-1,1:end-1])  )/dy - g*Ra*(T[2:end-1,1:end-1] + T[2:end-1,2:end-0])/2
-        Vy[:,1]   .= 0.
-        Vy[:,end] .= 0.
+        # @. Vx .= -k*(  ( P[2:end-0,2:end-1] - P[1:end-1,2:end-1])  )/dx
+        # @. Vy .= -k*(  ( P[2:end-1,2:end-0] - P[2:end-1,1:end-1])  )/dy + Ra*(T[2:end-1,1:end-1] + T[2:end-1,2:end-0])/2
+        # Vy[:,1]   .= 0.
+        # Vy[:,end] .= 0.
 
-        dt_adv   = 0.24999* min(dx, dy)/max(maximum(abs.(Vx)), maximum(abs.(Vy)))
-        dt_diffT = 0.24999* min(dx, dy)^2 /(lam0/rho_cp)
-        dt_diffP = 0.24999* min(dx, dy)^2 /(k/β)
-        dt       = min(dt_adv, dt_diffT, dt_diffP)
+        # dt_adv   = 0.24999* min(dx, dy)/max(maximum(abs.(Vx)), maximum(abs.(Vy)))
+        # dt_diffT = 0.24999* min(dx, dy)^2 /(lam0/rho_cp)
+        # dt_diffP = 0.24999* min(dx, dy)^2 /(k/β)
+        # dt       = min(dt_adv, dt_diffT, dt_diffP)
 
-        @. qx = Vx 
-        @. qy = Vy 
-        @. Rp = -( (qx[2:end-0,:] - qx[1:end-1,:])/dx + (qy[:,2:end-0] - qy[:,1:end-1])/dy )
-        @. P[2:end-1,2:end-1] -= dt/β *( (qx[2:end-0,:] - qx[1:end-1,:])/dx + (qy[:,2:end-0] - qy[:,1:end-1])/dy )
+        # @. qx = Vx 
+        # @. qy = Vy 
+        # @. Rp = -( (qx[2:end-0,:] - qx[1:end-1,:])/dx + (qy[:,2:end-0] - qy[:,1:end-1])/dy )
+        # @. P[2:end-1,2:end-1] -= dt/β *( (qx[2:end-0,:] - qx[1:end-1,:])/dx + (qy[:,2:end-0] - qy[:,1:end-1])/dy )
 
-        # Diffusion
-        @. qx = - lam0*(T[2:end-0,2:end-1] - T[1:end-1,2:end-1])/dx
-        @. qy = - lam0*(T[2:end-1,2:end-0] - T[2:end-1,1:end-1])/dy
-        @. T[2:end-1,2:end-1] -= dt/rho_cp * ( (qx[2:end-0,:] - qx[1:end-1,:])/dx + (qy[:,2:end-0] - qy[:,1:end-1])/dy )
+        # # Diffusion
+        # @. qx = - lam0*(T[2:end-0,2:end-1] - T[1:end-1,2:end-1])/dx
+        # @. qy = - lam0*(T[2:end-1,2:end-0] - T[2:end-1,1:end-1])/dy
+        # @. T[2:end-1,2:end-1] -= dt/rho_cp * ( (qx[2:end-0,:] - qx[1:end-1,:])/dx + (qy[:,2:end-0] - qy[:,1:end-1])/dy )
 
-        # Advection
-        @. qx = (Vx<0.0)*T[2:end-0,2:end-1].*Vx + (Vx>=0.0)*T[1:end-1,2:end-1].*Vx
-        @. qy = (Vy<0.0)*T[2:end-1,2:end-0].*Vy + (Vy>=0.0)*T[2:end-1,1:end-1].*Vy
-        @. T[2:end-1,2:end-1] -= dt* ( (qx[2:end-0,:] - qx[1:end-1,:])/dx + (qy[:,2:end-0] - qy[:,1:end-1])/dy )
+        # # Advection
+        # @. qx = (Vx<0.0)*T[2:end-0,2:end-1].*Vx + (Vx>=0.0)*T[1:end-1,2:end-1].*Vx
+        # @. qy = (Vy<0.0)*T[2:end-1,2:end-0].*Vy + (Vy>=0.0)*T[2:end-1,1:end-1].*Vy
+        # @. T[2:end-1,2:end-1] -= dt* ( (qx[2:end-0,:] - qx[1:end-1,:])/dx + (qy[:,2:end-0] - qy[:,1:end-1])/dy )
 
-        time += dt
+        # time += dt
 
         if mod(it, nout)==0 || it==1
-            @info "viz"
-            p = heatmap(xce, yce, T', title=time) 
-            # p = heatmap(xce, yce, P', title=time) 
+            # p = heatmap(xce, yce, T', title=time, aspect_ratio=1, xlims=(-0.5,0.5)) 
+            # p = heatmap(xce, yce, P', aspect_ratio=1, xlims=(-0.5,0.5), title="Initial pressure", xlabel="x []", ylabel="y []") 
+            p = heatmap(xce, yce, T', aspect_ratio=1, xlims=(-0.5,0.5), title="Initial temperature", xlabel="x []", ylabel="y []") 
+
             # p = heatmap(xc, yv, Vy') 
             display(p)
             sleep(0.2)

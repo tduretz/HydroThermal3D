@@ -1,4 +1,4 @@
-const USE_GPU  = true
+const USE_GPU  = false
 const GPU_ID   = 0
 const USE_MPI  = false
 
@@ -15,9 +15,10 @@ else
     macro exp(args...)  esc(:(Base.exp($(args...)))) end
 end
 
-using Printf, Statistics, LinearAlgebra#, Plots
+using Printf, Statistics, LinearAlgebra, Plots
 using WriteVTK
-#plotlyjs()
+plotlyjs()
+# gr()
 
 year = 365*3600*24
 
@@ -38,6 +39,9 @@ dρdP_C(T_C,p) = -7.372e-15 * T_C .^ 3 + 8.036e-21 * T_C .^ 2 .* p + 7.485e-12 *
 μf(T)         = 2.414e-5 * 10^(247.8/(T - 140.))
 kF(y,δ)       = 5e-16*exp(y/δ)
 ϕ(phase, ϕ0)  = phase == 2.0 ? 3*ϕ0 : ϕ0
+
+a(x1, x2, y1, y2) = ( y1-y2 ) / ( x1-x2 )
+b(x1, x2, y1, y2) = y1 - x1*(y1-y2)/(x1-x2)
 
 @views function Topography( x, y_plateau, a2, b2 )
     # x intersect between function and y = 0 (west part)
@@ -63,15 +67,18 @@ end
         yc0       = zero(phc)
         yce0      = zero(Tc_ex)        
         # Reference altitude
-        yv0      .= Topography.(  xv2, geom.y_plateau, geom.a2, geom.b2 )
-        yc0      .= Topography.(  xc2, geom.y_plateau, geom.a2, geom.b2 )
-        yce0     .= Topography.( xce2, geom.y_plateau, geom.a2, geom.b2 )
+        yv0      .= Topography.(  xv2, geom.y_plateau, geom.surf.a1, geom.surf.b1 )
+        yc0      .= Topography.(  xc2, geom.y_plateau, geom.surf.a1, geom.surf.b1 )
+        yce0     .= Topography.( xce2, geom.y_plateau, geom.surf.a1, geom.surf.b1 )
         # Crust
         @. phv = 0.0
         @. phc = 0.0
-        # Fault
-        @. phv[ yv2 < (xv2*geom.a1 + geom.b1) && yv2 > (xv2*geom.a2 + geom.b2) && yv2 > (xv2*geom.a3 + geom.b3)  ] = 2.0
-        @. phc[ yc2 < (xc2*geom.a1 + geom.b1) && yc2 > (xc2*geom.a2 + geom.b2) && yc2 > (xc2*geom.a3 + geom.b3)  ] = 2.0
+        # Fault 1
+        @. phv[ yv2 < (xv2*geom.fault1.a1 + geom.fault1.b1) && yv2 > (xv2*geom.fault1.a2 + geom.fault1.b2) && yv2 > (xv2*geom.fault1.a3 + geom.fault1.b3)  ] = 2.0
+        @. phc[ yc2 < (xc2*geom.fault1.a1 + geom.fault1.b1) && yc2 > (xc2*geom.fault1.a2 + geom.fault1.b2) && yc2 > (xc2*geom.fault1.a3 + geom.fault1.b3)  ] = 2.0
+        # Fault 2
+        @. phv[ yv2 > (xv2*geom.fault2.a1 + geom.fault2.b1) && yv2 < (xv2*geom.fault2.a2 + geom.fault2.b2) && yv2 > (xv2*geom.fault2.a3 + geom.fault2.b3)  ] = 2.0
+        @. phc[ yc2 > (xc2*geom.fault2.a1 + geom.fault2.b1) && yc2 < (xc2*geom.fault2.a2 + geom.fault2.b2) && yc2 > (xc2*geom.fault2.a3 + geom.fault2.b3)  ] = 2.0
         # Pluton
         r_pluton = 3e3/sc.L
         @. phv[ ((xv2-xmax/2)^2 + (yv2-ymin/3)^2 + (zv2-zmax/2)^2) < r_pluton^2 ] = 3.0
@@ -90,7 +97,7 @@ end
         @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:]
         @. Tc_ex[:,1,:] = 2*Tbot - Tc_ex[:,2,:]; @. Tc_ex[:,end,:] = 2*Ttop - Tc_ex[:,end-1,:]
         @. Tc_ex[:,:,1] =          Tc_ex[:,:,1]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1]
-        @. Tc_ex[ yce2>0 && (yce2 > (xce2*geom.a2 + geom.b2)) || yce2.>geom.y_plateau] = Ttop
+        @. Tc_ex[ yce2>0 && (yce2 > (xce2*geom.surf.a1 + geom.surf.b1)) || yce2.>geom.y_plateau] = Ttop
         # SET INITIAL THERMAL PERTUBATION
         # @. Tc_ex[ ((xce2-xmax/2)^2 + (yce2-ymax/2)^2 + (zce2-zmax/2)^2) < 0.01 ] += 0.1
         # Fluid pressure field
@@ -100,7 +107,7 @@ end
         @. Pc_ex[1,:,:] =          Pc_ex[2,:,:]; @. Pc_ex[end,:,:] =          Pc_ex[end-1,:,:]
         @. Pc_ex[:,1,:] = 2*Pbot - Pc_ex[:,2,:]; @. Pc_ex[:,end,:] = 2*Ptop - Pc_ex[:,end-1,:]
         @. Pc_ex[:,:,1] =          Pc_ex[:,:,1]; @. Pc_ex[:,:,end] =          Pc_ex[:,:,end-1]
-        @. Pc_ex[ yce2>0 && (yce2 > (xce2*geom.a2 + geom.b2)) || yce2.>geom.y_plateau] = Ptop
+        @. Pc_ex[ yce2>0 && (yce2 > (xce2*geom.surf.a1 + geom.surf.b1)) || yce2.>geom.y_plateau] = Ptop
         return nothing
 end
 
@@ -114,10 +121,10 @@ end
     Hydro      = true
     Thermal    = true
     Advection  = true
-    Vizu       = false
+    Vizu       = true
     Save       = true
     fact       = 1
-    nt         = 1000
+    nt         = 1
     nout       = 10
     dt_fact    = 10
     sticky_air = false
@@ -133,7 +140,7 @@ end
     # Physics
     xmin     = -0.0/sc.L;  xmax = 120.0e3/sc.L;   Lx = xmax - xmin
     ymin     = -30e3/sc.L; ymax =    10e3/sc.L;   Ly = ymax - ymin
-    zmin     = -20.00/sc.L; zmax =   20e3/sc.L;   Lz = zmax - zmin
+    zmin     = -0.00/sc.L; zmax =   1.0e3/sc.L;   Lz = zmax - zmin
     dT       = 600.0/sc.T
     Ttop     = 293.0/sc.T
     Tbot     = Ttop + dT
@@ -148,28 +155,66 @@ end
     δ        = 3000. /sc.L
     k_fact   = 100.
 
-    # Initial conditions: Draw Fault
-    # top
-    x1 = 68466.18089117216/sc.L; x2 = 31498.437753425103/sc.L
-    y1 = 0.0/sc.L;               y2 = -16897.187956165293/sc.L
-    # bottom
-    x3 = 32000.0/sc.L; x4 = 69397.54576150524/sc.L
-    y3 =-17800.0/sc.L; y4 = 0.0/sc.L
-    # bottom
-    x5 = 32000.0/sc.L; x6 = 31498.437753425103/sc.L
-    y5 =-17800.0/sc.L; y6 = -16897.187956165293/sc.L
+    # Initial conditions 
+    # Main detachment fault
+    fault1 = (
+        # top surface
+        x1 = 75e3/sc.L, x2 = 31498.437753425103/sc.L,
+        y1 = 3e3/sc.L,  y2 = -16897.187956165293/sc.L,
+        # bottom surface
+        x3 = 32000.0/sc.L, x4 = 78e3/sc.L, 
+        y3 =-17800.0/sc.L, y4 = 3e3/sc.L,
+        # left edge
+        x5 = 32000.0/sc.L, x6 = 31498.437753425103/sc.L,
+        y5 =-17800.0/sc.L, y6 = -16897.187956165293/sc.L,
+    )
+    # Secondary detachment fault
+    fault2 = (
+        # bottom surface
+        x1 = 33e3/sc.L, x2 = 40e3/sc.L,
+        y1 = 0e3/sc.L,  y2 = -13e3/sc.L,
+        # top surface
+        x3 = 41e3/sc.L, x4 = 34e3/sc.L, 
+        y3 =-13e3/sc.L, y4 = 0e3/sc.L,
+        # bottom
+        x5 = 41e3/sc.L, x6 = 40e3/sc.L,
+        y5 =-13e3/sc.L, y6 = -13e3/sc.L,
+    )
+    # Surface
+    surf = (
+        x1 = 32000.0/sc.L, x2 = 69397.54576150524/sc.L,
+        y1 =-17800.0/sc.L, y2 = 0.0/sc.L,
+    )
     
     geometry = (
         y_plateau = 1*3e3/sc.L,
-        # top
-        a1 = ( y1-y2 ) / ( x1-x2 ),
-        b1 = y1 - x1*(y1-y2)/(x1-x2),
-        # bottom
-        a2 = ( y3-y4 ) / ( x3-x4 ),
-        b2 = y3 - x3*(y3-y4)/(x3-x4),
-        # bottom
-        a3 = ( y5-y6 ) / ( x5-x6 ),
-        b3 = y5 - x5*(y5-y6)/(x5-x6),
+        surf = (
+            # Coefficient for surface slope
+            a1 = a(surf.x1, surf.x2, surf.y1, surf.y2),
+            b1 = b(surf.x1, surf.x2, surf.y1, surf.y2),
+        ),
+        fault1 = (
+            # top
+            a1 = a(fault1.x1, fault1.x2, fault1.y1, fault1.y2),
+            b1 = b(fault1.x1, fault1.x2, fault1.y1, fault1.y2),
+            # bottom
+            a2 = a(fault1.x3, fault1.x4, fault1.y3, fault1.y4),
+            b2 = b(fault1.x3, fault1.x4, fault1.y3, fault1.y4),
+            # bottom
+            a3 = a(fault1.x5, fault1.x6, fault1.y5, fault1.y6),
+            b3 = b(fault1.x5, fault1.x6, fault1.y5, fault1.y6),
+        ),
+        fault2 = (
+            # top
+            a1 = a(fault2.x1, fault2.x2, fault2.y1, fault2.y2),
+            b1 = b(fault2.x1, fault2.x2, fault2.y1, fault2.y2),
+            # bottom
+            a2 = a(fault2.x3, fault2.x4, fault2.y3, fault2.y4),
+            b2 = b(fault2.x3, fault2.x4, fault2.y3, fault2.y4),
+            # bottom
+            a3 = a(fault2.x5, fault2.x6, fault2.y5, fault2.y6),
+            b3 = b(fault2.x5, fault2.x6, fault2.y5, fault2.y6),
+        ),
     )
 
     @printf("Surface T = %03f, bottom T = %03f, qy = %03f\n", Ttop*sc.T, Tbot*sc.T, qyS*(sc.W/sc.L^2))
@@ -178,8 +223,7 @@ end
     fact     = 16
     ncx      = fact*32-6
     ncy      = fact*8 -6
-    ncz      = fact*8 -6
-    @info "ncx = $(ncx), ncy = $(ncy), ncz = $(ncz)"
+    ncz      = 3#fact*32-6
     # Preprocessing
     if (USE_MPI) me, dims, nprocs, coords, comm = init_global_grid(ncx, ncy, ncz; dimx=2, dimy=2, dimz=2);             
     else         me, dims, nprocs, coords       = (0, [1,1,1], 1, [0,0,0]);
@@ -191,10 +235,9 @@ end
     dt       = 1e1/sc.t  # min(dx,dy,dz)^2/6.1
     _dx, _dy, _dz = 1.0/dx, 1.0/dy, 1.0/dz
     _dt      = 1.0/dt
-    @info "dx = $(ncx), dy = $(dy), ncz = $(dz)"
     # PT iteration parameters
     nitmax  = 1e4
-    nitout  = 1000
+    nitout  = 100
     tolT    = 1e-10  # Thermal solver
     tolP    = 1e-17  # Darcy solver
     @info "Go go go!!"
@@ -307,7 +350,7 @@ end
 
                 check = mod(iter,nitout) == 0 || iter<=2
                 if check @parallel SwapDYREL!(Xcit, Fcit, Tc_ex, Fc) end
-                @parallel SetTemperatureBCs!(Tc_ex, phc, qyS, _dy, 1.0/sc.kt, Ttop,  geometry.y_plateau, geometry.a2, geometry.b2, dTdy, dx, dy, sticky_air)
+                @parallel SetTemperatureBCs!(Tc_ex, phc, qyS, _dy, 1.0/sc.kt, Ttop,  geometry.y_plateau, geometry.surf.a1, geometry.surf.b1, dTdy, dx, dy, sticky_air)
                 @parallel ComputeFlux!(qx, qy, qz, kx, ky, kz, Tc_ex, _dx, _dy, _dz)
                 @parallel ResidualTemperatureLinearised!(Fc, Tc_ex, Xc0, ρC_ϕρ, phc, PC, qx, qy, qz, Qt, transient, _dt, _dx, _dy, _dz)
                 @parallel DYRELUpdate!(Fc0, Tc_ex, Fc, h1, h2, Δτ)
@@ -365,7 +408,7 @@ end
                 check = mod(iter,nitout) == 0 || iter<=2
                 if check @parallel SwapDYREL!(Xcit, Fcit, Pc_ex, Fc) end
                 @parallel ϕρf(ρC_ϕρ, Tc_ex, Pc_ex, phc, ϕi, sc.ρ, sc.T, sc.σ)
-                @parallel SetPressureBCs!(Pc_ex, phc, Pbot, Ptop, geometry.y_plateau, geometry.a2, geometry.b2, 1000/sc.ρ, g, dx, dy, sticky_air)
+                @parallel SetPressureBCs!(Pc_ex, phc, Pbot, Ptop, geometry.y_plateau, geometry.surf.a1, geometry.surf.b1, 1000/sc.ρ, g, dx, dy, sticky_air)
                 @parallel ComputeDarcyFlux!(qx, qy, qz, k_ρf, kx, ky, kz, Pc_ex, g, _dx, _dy, _dz)
                 @parallel ResidualFluidPressure!(Fc, phc, ρC_ϕρ, Xc0, PC, qx, qy, qz, transient, _dt, _dx, _dy, _dz)
                 @parallel DYRELUpdate!(Fc0, Pc_ex, Fc, h1, h2, Δτ)
@@ -424,13 +467,13 @@ end
         #---------------------------------------------------------------------
         if (Vizu && mod(it, nout) == 0)
             tMa = @sprintf("%03f", time*sc.t/1e6/year)
-            y_topo = Topography.( xce, geometry.y_plateau, geometry.a2, geometry.b2 )
-            p1 = heatmap(xce*sc.L/1e3, yce*sc.L/1e3, (Tc_ex[:,:,2]'.*sc.T.-273.15), c=cgrad(:hot, rev=true), aspect_ratio=1, clims=(0, 700), xlim=(0,120), ylim=(-30,5)) 
+            y_topo = Topography.( xce, geometry.y_plateau, geometry.surf.a1, geometry.surf.b1 )
+            # p1 = heatmap(xce*sc.L/1e3, yce*sc.L/1e3, (Tc_ex[:,:,2]'.*sc.T.-273.15), c=cgrad(:hot, rev=true), aspect_ratio=1, clims=(0, 700), xlim=(0,120), ylim=(-30,5)) 
             # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, phv[:,:,2]')
             p2 = heatmap(xce*sc.L/1e3, yce*sc.L/1e3, (Pc_ex[:,:,2]'.*sc.σ./1e6), c=:jet1, aspect_ratio=1, xlim=(0,120), ylim=(-30,5)) 
             p3 = heatmap(xc *sc.L/1e3, yv *sc.L/1e3, (Vy[:,:,2]'.*sc.V*100*year), c=:jet1, aspect_ratio=1, clims=(-27, 23), xlim=(0,120), ylim=(-30,5)) #title="Vy [cm/y]"*string(" @ t = ", tMa, " My" ) 
 
-            # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, phv[:,:,2]', c=:jet1, aspect_ratio=1) 
+            p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, phv[:,:,2]', c=:jet1, aspect_ratio=1, xlim=(0,120), ylim=(-30,5)) 
 
             # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, (k_ρf[:,:,2]'.*sc.kt), c=:jet1, aspect_ratio=1) 
             # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, (k_ρf[:,:,2]'.*sc.t), c=:jet1, aspect_ratio=1) 
