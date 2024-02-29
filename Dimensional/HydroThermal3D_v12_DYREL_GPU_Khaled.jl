@@ -1,4 +1,4 @@
-const USE_GPU  = false
+const USE_GPU  = true
 const GPU_ID   = 0
 const USE_MPI  = false
 
