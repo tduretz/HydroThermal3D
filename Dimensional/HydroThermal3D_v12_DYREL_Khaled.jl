@@ -77,8 +77,8 @@ end
         @. phv[ yv2 < (xv2*geom.fault1.a1 + geom.fault1.b1) && yv2 > (xv2*geom.fault1.a2 + geom.fault1.b2) && yv2 > (xv2*geom.fault1.a3 + geom.fault1.b3)  ] = 2.0
         @. phc[ yc2 < (xc2*geom.fault1.a1 + geom.fault1.b1) && yc2 > (xc2*geom.fault1.a2 + geom.fault1.b2) && yc2 > (xc2*geom.fault1.a3 + geom.fault1.b3)  ] = 2.0
         # Fault 2
-        @. phv[ yv2 > (xv2*geom.fault2.a1 + geom.fault2.b1) && yv2 < (xv2*geom.fault2.a2 + geom.fault2.b2) && yv2 > (xv2*geom.fault2.a3 + geom.fault2.b3)  ] = 2.0
-        @. phc[ yc2 > (xc2*geom.fault2.a1 + geom.fault2.b1) && yc2 < (xc2*geom.fault2.a2 + geom.fault2.b2) && yc2 > (xc2*geom.fault2.a3 + geom.fault2.b3)  ] = 2.0
+        @. phv[ yv2 < (xv2*geom.fault2.a1 + geom.fault2.b1) && yv2 > (xv2*geom.fault2.a2 + geom.fault2.b2) && yv2 > (xv2*geom.fault2.a3 + geom.fault2.b3)  ] = 2.0
+        @. phc[ yc2 < (xc2*geom.fault2.a1 + geom.fault2.b1) && yc2 > (xc2*geom.fault2.a2 + geom.fault2.b2) && yc2 > (xc2*geom.fault2.a3 + geom.fault2.b3)  ] = 2.0
         # Pluton
         r_pluton = 3e3/sc.L
         @. phv[ ((xv2-xmax/2)^2 + (yv2-ymin/3)^2 + (zv2-zmax/2)^2) < r_pluton^2 ] = 3.0
@@ -171,11 +171,11 @@ end
     # Secondary detachment fault
     fault2 = (
         # bottom surface
-        x1 = 33e3/sc.L, x2 = 40e3/sc.L,
-        y1 = 0e3/sc.L,  y2 = -13e3/sc.L,
+        x1 = 34e3/sc.L, x2 = 41e3/sc.L,  
+        y1 = 0e3/sc.L,  y2 =-13e3/sc.L, 
         # top surface
-        x3 = 41e3/sc.L, x4 = 34e3/sc.L, 
-        y3 =-13e3/sc.L, y4 = 0e3/sc.L,
+        x3 =  40e3/sc.L, x4 = 33e3/sc.L,
+        y3 = -13e3/sc.L, y4 = 0e3/sc.L, 
         # bottom
         x5 = 41e3/sc.L, x6 = 40e3/sc.L,
         y5 =-13e3/sc.L, y6 = -13e3/sc.L,
