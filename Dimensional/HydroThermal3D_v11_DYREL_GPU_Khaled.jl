@@ -1,5 +1,5 @@
 const USE_GPU  = true
-const GPU_ID   = 1
+const GPU_ID   = 0
 const USE_MPI  = false
 
 using ParallelStencil
@@ -117,7 +117,7 @@ end
     Vizu       = false
     Save       = true
     fact       = 1
-    nt         = 1000
+    nt         = 1
     nout       = 10
     dt_fact    = 10
     sticky_air = false
