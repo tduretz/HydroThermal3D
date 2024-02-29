@@ -126,7 +126,7 @@ end
     fact       = 1
     nt         = 5000
     nout       = 10
-    dt_fact    = 100
+    dt_fact    = 10
     sticky_air = false
 
     # Characteristic dimensions

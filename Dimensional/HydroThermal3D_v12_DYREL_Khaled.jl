@@ -124,7 +124,7 @@ end
     Vizu       = true
     Save       = true
     fact       = 1
-    nt         = 100
+    nt         = 10
     nout       = 10
     dt_fact    = 10
     sticky_air = false
@@ -140,7 +140,7 @@ end
     # Physics
     xmin     = -0.0/sc.L;  xmax = 120.0e3/sc.L;   Lx = xmax - xmin
     ymin     = -30e3/sc.L; ymax =    10e3/sc.L;   Ly = ymax - ymin
-    zmin     = -20.00/sc.L; zmax =   20e3/sc.L;   Lz = zmax - zmin
+    zmin     = -20e3/sc.L; zmax =   20e3/sc.L;   Lz = zmax - zmin
     dT       = 600.0/sc.T
     Ttop     = 293.0/sc.T
     Tbot     = Ttop + dT
