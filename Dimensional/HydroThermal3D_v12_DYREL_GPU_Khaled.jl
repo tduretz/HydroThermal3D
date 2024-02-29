@@ -124,9 +124,9 @@ end
     Vizu       = false
     Save       = true
     fact       = 1
-    nt         = 1
+    nt         = 5000
     nout       = 10
-    dt_fact    = 10
+    dt_fact    = 100
     sticky_air = false
 
     # Characteristic dimensions
