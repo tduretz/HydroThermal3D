@@ -56,11 +56,14 @@ end
     return nothing
 end
 
-@parallel_indices (i,j,k) function Permeability!( X, ymin, Δy, phc, δ, scale_L )
+@parallel_indices (i,j,k) function Permeability!( X, k_fact, ymin, Δy, phc, δ, scale_L )
     if i<=size(X, 1) && j<=size(X, 2) && k<=size(X, 3) 
-        if phc[i,j,k] != 1
+        if phc[i,j,k] != 1.0
             y        = ymin + (j-1)*Δy + Δy/2
             X[i,j,k] = kF(y*scale_L, δ*scale_L)
+            if phc[i,j,k] == 2.0
+                X[i,j,k] *= k_fact
+            end
         else
             X[i,j,k] = NaN
         end

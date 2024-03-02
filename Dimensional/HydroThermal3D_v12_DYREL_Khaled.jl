@@ -65,7 +65,9 @@ end
         zc2       = zce2[2:end-1,2:end-1,2:end-1]
         yv0       = zero(phv)
         yc0       = zero(phc)
-        yce0      = zero(Tc_ex)        
+        yce0      = zero(Tc_ex) 
+        # Pluton position
+        pluton = (x=50e3/sc.L, y=-17e3/sc.L, z=zmax/2, r=5e3/sc.L)   
         # Reference altitude
         yv0      .= Topography.(  xv2, geom.y_plateau, geom.surf.a1, geom.surf.b1 )
         yc0      .= Topography.(  xc2, geom.y_plateau, geom.surf.a1, geom.surf.b1 )
@@ -80,9 +82,8 @@ end
         @. phv[ yv2 < (xv2*geom.fault2.a1 + geom.fault2.b1) && yv2 > (xv2*geom.fault2.a2 + geom.fault2.b2) && yv2 > (xv2*geom.fault2.a3 + geom.fault2.b3)  ] = 2.0
         @. phc[ yc2 < (xc2*geom.fault2.a1 + geom.fault2.b1) && yc2 > (xc2*geom.fault2.a2 + geom.fault2.b2) && yc2 > (xc2*geom.fault2.a3 + geom.fault2.b3)  ] = 2.0
         # Pluton
-        r_pluton = 3e3/sc.L
-        @. phv[ ((xv2-xmax/2)^2 + (yv2-ymin/3)^2 + (zv2-zmax/2)^2) < r_pluton^2 ] = 3.0
-        @. phc[ ((xc2-xmax/2)^2 + (yc2-ymin/3)^2 + (zc2-zmax/2)^2) < r_pluton^2 ] = 3.0
+        @. phv[ ((xv2-pluton.x)^2 + (yv2-pluton.y)^2 + (zv2-pluton.z)^2) < pluton.r^2 ] = 3.0
+        @. phc[ ((xc2-pluton.x)^2 + (yc2-pluton.y)^2 + (zc2-pluton.z)^2) < pluton.r^2 ] = 3.0
         # Air
         # if sticky_air
             @. phv[ yv2 > yv0 ] = 1.0
@@ -124,7 +125,7 @@ end
     Vizu       = true
     Save       = true
     fact       = 1
-    nt         = 10
+    nt         = 100
     nout       = 10
     dt_fact    = 10
     sticky_air = false
@@ -187,7 +188,7 @@ end
     )
     
     geometry = (
-        y_plateau = 1*3e3/sc.L,
+        y_plateau = 0*3e3/sc.L,
         surf = (
             # Coefficient for surface slope
             a1 = a(surf.x1, surf.x2, surf.y1, surf.y2),
@@ -223,8 +224,9 @@ end
     fact     = 16
     ncx      = fact*32-6
     ncy      = fact*8 -6
-    ncz      = fact*8 -6
-    # ncz      = 3#fact*32-6
+    # ncz      = fact*8 -6
+    ncz      = 3#fact*32-6
+    @info "ncx = $(ncx) ncy = $(ncy) ncz = $(ncz)"
     # Preprocessing
     if (USE_MPI) me, dims, nprocs, coords, comm = init_global_grid(ncx, ncy, ncz; dimx=2, dimy=2, dimz=2);             
     else         me, dims, nprocs, coords       = (0, [1,1,1], 1, [0,0,0]);
@@ -310,8 +312,7 @@ end
     @printf("min(Pc_ex) = %11.4e - max(Pc_ex) = %11.4e\n", minimum_g(Pc_ex)*sc.σ, maximum_g(Pc_ex)*sc.σ )
     @printf("min(Vy)    = %11.4e - max(Vy)    = %11.4e\n", minimum_g(Vy)*sc.V,    maximum_g(Vy)*sc.V )
 
-    it1=0; time=0 
-    transient = 1.0
+    it1=0; time=0; transient = 1.0
 
     ## Action
     @time for it = it1:nt
@@ -469,11 +470,14 @@ end
         if (Vizu && mod(it, nout) == 0)
             tMa = @sprintf("%03f", time*sc.t/1e6/year)
             y_topo = Topography.( xce, geometry.y_plateau, geometry.surf.a1, geometry.surf.b1 )
-            # p1 = heatmap(xce*sc.L/1e3, yce*sc.L/1e3, (Tc_ex[:,:,2]'.*sc.T.-273.15), c=cgrad(:hot, rev=true), aspect_ratio=1, clims=(0, 700), xlim=(0,120), ylim=(-30,5)) 
+            p1 = heatmap(xce*sc.L/1e3, yce*sc.L/1e3, (Tc_ex[:,:,2]'.*sc.T.-273.15), c=cgrad(:hot, rev=true), aspect_ratio=1, xlim=(0,120), ylim=(-30,5))  #, clims=(0, 700)
             # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, phv[:,:,2]')
             p2 = heatmap(xce*sc.L/1e3, yce*sc.L/1e3, (Pc_ex[:,:,2]'.*sc.σ./1e6), c=:jet1, aspect_ratio=1, xlim=(0,120), ylim=(-30,5)) 
             p3 = heatmap(xc *sc.L/1e3, yv *sc.L/1e3, (Vy[:,:,2]'.*sc.V*100*year), c=:jet1, aspect_ratio=1, clims=(-27, 23), xlim=(0,120), ylim=(-30,5)) #title="Vy [cm/y]"*string(" @ t = ", tMa, " My" ) 
-
+            
+            x = Tc_ex[:,55,2]
+            p3 = plot(xce*sc.L/1e3, x.*sc.T.-273.15)
+            
             p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, phv[:,:,2]', c=:jet1, aspect_ratio=1, xlim=(0,120), ylim=(-30,5)) 
 
             # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, (k_ρf[:,:,2]'.*sc.kt), c=:jet1, aspect_ratio=1) 
@@ -512,7 +516,7 @@ end
             vtkfile["Velocity"]    = (Array(Fc0), Array(Fc), Array(Fcit))
             @parallel EffectiveThermalConductivity!( dumc, Tc_ex, ϕi, phc, sc.T )
             vtkfile["kThermal"]    = Array(dumc)
-            @parallel Permeability!( dumc, ymin, dy, phc, δ, sc.L )
+            @parallel Permeability!( dumc, k_fact, ymin, dy, phc, δ, sc.L )
             vtkfile["Perm"]        = Array(dumc)
             @parallel FluidDensity!( dumc, Tc_ex, Pc_ex, phc, sc.T, sc.σ )
             vtkfile["Density"]     = Array(dumc)

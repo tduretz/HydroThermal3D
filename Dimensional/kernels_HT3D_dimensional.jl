@@ -45,10 +45,6 @@ end
         Tv *= scale_T
         # Effective conductivity
         ktv[i,j,k] = ((1-ϕ(phv[i,j,k],ϕ0))*kTs(Tv) + ϕ(phv[i,j,k],ϕ0)*kTf(Tv))/scale_kt
-        # Air
-        # if phv[i,j,k] == 1.0
-        #     ktv[i,j,k] = 200.0/scale_kt
-        # end
     end
     return nothing
 end
@@ -164,7 +160,7 @@ end
             F[i,j,k] += (qx[i+1,j,k] - qx[i,j,k])*_dx
             F[i,j,k] += (qy[i,j+1,k] - qy[i,j,k])*_dy
             F[i,j,k] += (qz[i,j,k+1] - qz[i,j,k])*_dz
-            F[i,j,k] -= Q
+            F[i,j,k] -= transient*Q # only activate heat source after initialisation
             F[i,j,k] /= PC[i,j,k]
         else
             F[i,j,k] = 0.
@@ -271,7 +267,6 @@ end
     if (ix<=size(Pc_ex,1) && iy<=size(Pc_ex,2) && iz==size(Pc_ex,3)) Pc_ex[ix,iy,size(Pc_ex,3)] =          Pc_ex[ix,iy,size(Pc_ex,3)-1]  end
     return nothing
 end
-
 
 @parallel function DampedUpdate!(F0::Data.Array, X::Data.Array, F::Data.Array, dampx::Data.Number, _dτ::Data.Number)
     @all(F0) = @all(F) + dampx*@all(F0)

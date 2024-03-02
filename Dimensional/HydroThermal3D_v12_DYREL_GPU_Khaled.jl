@@ -60,55 +60,56 @@ b(x1, x2, y1, y2) = y1 - x1*(y1-y2)/(x1-x2)
 end
 
 @views function SetInitialConditions_Khaled(phc, phv::Array{Float64,3}, geom, Tc_ex::Array{Float64,3}, Pc_ex, xce2::Array{Float64,3}, yce2::Array{Float64,3}, zce2::Array{Float64,3}, xv2::Array{Float64,3}, yv2::Array{Float64,3}, zv2::Array{Float64,3}, Tbot::Data.Number, Ttop::Data.Number, Pbot, Ptop, xmin::Data.Number, ymin::Data.Number, zmin::Data.Number, xmax::Data.Number, ymax::Data.Number, zmax::Data.Number, Ly::Data.Number, sticky_air, sc::scaling)
-        xc2       = xce2[2:end-1,2:end-1,2:end-1]
-        yc2       = yce2[2:end-1,2:end-1,2:end-1]
-        zc2       = zce2[2:end-1,2:end-1,2:end-1]
-        yv0       = zero(phv)
-        yc0       = zero(phc)
-        yce0      = zero(Tc_ex)        
-        # Reference altitude
-        yv0      .= Topography.(  xv2, geom.y_plateau, geom.surf.a1, geom.surf.b1 )
-        yc0      .= Topography.(  xc2, geom.y_plateau, geom.surf.a1, geom.surf.b1 )
-        yce0     .= Topography.( xce2, geom.y_plateau, geom.surf.a1, geom.surf.b1 )
-        # Crust
-        @. phv = 0.0
-        @. phc = 0.0
-        # Fault 1
-        @. phv[ yv2 < (xv2*geom.fault1.a1 + geom.fault1.b1) && yv2 > (xv2*geom.fault1.a2 + geom.fault1.b2) && yv2 > (xv2*geom.fault1.a3 + geom.fault1.b3)  ] = 2.0
-        @. phc[ yc2 < (xc2*geom.fault1.a1 + geom.fault1.b1) && yc2 > (xc2*geom.fault1.a2 + geom.fault1.b2) && yc2 > (xc2*geom.fault1.a3 + geom.fault1.b3)  ] = 2.0
-        # Fault 2
-        @. phv[ yv2 < (xv2*geom.fault2.a1 + geom.fault2.b1) && yv2 > (xv2*geom.fault2.a2 + geom.fault2.b2) && yv2 > (xv2*geom.fault2.a3 + geom.fault2.b3)  ] = 2.0
-        @. phc[ yc2 < (xc2*geom.fault2.a1 + geom.fault2.b1) && yc2 > (xc2*geom.fault2.a2 + geom.fault2.b2) && yc2 > (xc2*geom.fault2.a3 + geom.fault2.b3)  ] = 2.0
-        # Pluton
-        r_pluton = 3e3/sc.L
-        @. phv[ ((xv2-xmax/2)^2 + (yv2-ymin/3)^2 + (zv2-zmax/2)^2) < r_pluton^2 ] = 3.0
-        @. phc[ ((xc2-xmax/2)^2 + (yc2-ymin/3)^2 + (zc2-zmax/2)^2) < r_pluton^2 ] = 3.0
-        # Air
-        # if sticky_air
-            @. phv[ yv2 > yv0 ] = 1.0
-            @. phc[ yc2 > yc0 ] = 1.0
-        # end
-        # @. phv[ yv2>0 && (yv2 > (xv2*a2 + b2)) || yv2.>y_plateau ]                  = 1.0
-        # @. k_ρf[ yv2 < (xv2*a1 + b1) && yv2 > (xv2*a2 + b2) && yv2 > (xv2*a3 + b3)  ] = Perm*k_ρf[ yv2 < (xv2*a1 + b1) && yv2 > (xv2*a2 + b2) && yv2 > (xv2*a3 + b3)  ]
-        # Thermal field
-        y_bot = -30e3/sc.L
-        dTdy = (Ttop .- Tbot) ./ (yce0 .- y_bot)
-        @. Tc_ex = Ttop + dTdy * (yce2 - yce0)
-        @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:]
-        @. Tc_ex[:,1,:] = 2*Tbot - Tc_ex[:,2,:]; @. Tc_ex[:,end,:] = 2*Ttop - Tc_ex[:,end-1,:]
-        @. Tc_ex[:,:,1] =          Tc_ex[:,:,1]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1]
-        @. Tc_ex[ yce2>0 && (yce2 > (xce2*geom.surf.a1 + geom.surf.b1)) || yce2.>geom.y_plateau] = Ttop
-        # SET INITIAL THERMAL PERTUBATION
-        # @. Tc_ex[ ((xce2-xmax/2)^2 + (yce2-ymax/2)^2 + (zce2-zmax/2)^2) < 0.01 ] += 0.1
-        # Fluid pressure field
-        y_bot = -30e3/sc.L
-        dPdy = (Ptop .- Pbot) ./ (yce0 .- y_bot)
-        @. Pc_ex = Ptop + dPdy * (yce2 - yce0)
-        @. Pc_ex[1,:,:] =          Pc_ex[2,:,:]; @. Pc_ex[end,:,:] =          Pc_ex[end-1,:,:]
-        @. Pc_ex[:,1,:] = 2*Pbot - Pc_ex[:,2,:]; @. Pc_ex[:,end,:] = 2*Ptop - Pc_ex[:,end-1,:]
-        @. Pc_ex[:,:,1] =          Pc_ex[:,:,1]; @. Pc_ex[:,:,end] =          Pc_ex[:,:,end-1]
-        @. Pc_ex[ yce2>0 && (yce2 > (xce2*geom.surf.a1 + geom.surf.b1)) || yce2.>geom.y_plateau] = Ptop
-        return nothing
+    xc2       = xce2[2:end-1,2:end-1,2:end-1]
+    yc2       = yce2[2:end-1,2:end-1,2:end-1]
+    zc2       = zce2[2:end-1,2:end-1,2:end-1]
+    yv0       = zero(phv)
+    yc0       = zero(phc)
+    yce0      = zero(Tc_ex) 
+    # Pluton position
+    pluton = (x=50e3/sc.L, y=-17e3/sc.L, z=zmax/2, r=5e3/sc.L)   
+    # Reference altitude
+    yv0      .= Topography.(  xv2, geom.y_plateau, geom.surf.a1, geom.surf.b1 )
+    yc0      .= Topography.(  xc2, geom.y_plateau, geom.surf.a1, geom.surf.b1 )
+    yce0     .= Topography.( xce2, geom.y_plateau, geom.surf.a1, geom.surf.b1 )
+    # Crust
+    @. phv = 0.0
+    @. phc = 0.0
+    # Fault 1
+    @. phv[ yv2 < (xv2*geom.fault1.a1 + geom.fault1.b1) && yv2 > (xv2*geom.fault1.a2 + geom.fault1.b2) && yv2 > (xv2*geom.fault1.a3 + geom.fault1.b3)  ] = 2.0
+    @. phc[ yc2 < (xc2*geom.fault1.a1 + geom.fault1.b1) && yc2 > (xc2*geom.fault1.a2 + geom.fault1.b2) && yc2 > (xc2*geom.fault1.a3 + geom.fault1.b3)  ] = 2.0
+    # Fault 2
+    @. phv[ yv2 < (xv2*geom.fault2.a1 + geom.fault2.b1) && yv2 > (xv2*geom.fault2.a2 + geom.fault2.b2) && yv2 > (xv2*geom.fault2.a3 + geom.fault2.b3)  ] = 2.0
+    @. phc[ yc2 < (xc2*geom.fault2.a1 + geom.fault2.b1) && yc2 > (xc2*geom.fault2.a2 + geom.fault2.b2) && yc2 > (xc2*geom.fault2.a3 + geom.fault2.b3)  ] = 2.0
+    # Pluton
+    @. phv[ ((xv2-pluton.x)^2 + (yv2-pluton.y)^2 + (zv2-pluton.z)^2) < pluton.r^2 ] = 3.0
+    @. phc[ ((xc2-pluton.x)^2 + (yc2-pluton.y)^2 + (zc2-pluton.z)^2) < pluton.r^2 ] = 3.0
+    # Air
+    # if sticky_air
+        @. phv[ yv2 > yv0 ] = 1.0
+        @. phc[ yc2 > yc0 ] = 1.0
+    # end
+    # @. phv[ yv2>0 && (yv2 > (xv2*a2 + b2)) || yv2.>y_plateau ]                  = 1.0
+    # @. k_ρf[ yv2 < (xv2*a1 + b1) && yv2 > (xv2*a2 + b2) && yv2 > (xv2*a3 + b3)  ] = Perm*k_ρf[ yv2 < (xv2*a1 + b1) && yv2 > (xv2*a2 + b2) && yv2 > (xv2*a3 + b3)  ]
+    # Thermal field
+    y_bot = -30e3/sc.L
+    dTdy = (Ttop .- Tbot) ./ (yce0 .- y_bot)
+    @. Tc_ex = Ttop + dTdy * (yce2 - yce0)
+    @. Tc_ex[1,:,:] =          Tc_ex[2,:,:]; @. Tc_ex[end,:,:] =          Tc_ex[end-1,:,:]
+    @. Tc_ex[:,1,:] = 2*Tbot - Tc_ex[:,2,:]; @. Tc_ex[:,end,:] = 2*Ttop - Tc_ex[:,end-1,:]
+    @. Tc_ex[:,:,1] =          Tc_ex[:,:,1]; @. Tc_ex[:,:,end] =          Tc_ex[:,:,end-1]
+    @. Tc_ex[ yce2>0 && (yce2 > (xce2*geom.surf.a1 + geom.surf.b1)) || yce2.>geom.y_plateau] = Ttop
+    # SET INITIAL THERMAL PERTUBATION
+    # @. Tc_ex[ ((xce2-xmax/2)^2 + (yce2-ymax/2)^2 + (zce2-zmax/2)^2) < 0.01 ] += 0.1
+    # Fluid pressure field
+    y_bot = -30e3/sc.L
+    dPdy = (Ptop .- Pbot) ./ (yce0 .- y_bot)
+    @. Pc_ex = Ptop + dPdy * (yce2 - yce0)
+    @. Pc_ex[1,:,:] =          Pc_ex[2,:,:]; @. Pc_ex[end,:,:] =          Pc_ex[end-1,:,:]
+    @. Pc_ex[:,1,:] = 2*Pbot - Pc_ex[:,2,:]; @. Pc_ex[:,end,:] = 2*Ptop - Pc_ex[:,end-1,:]
+    @. Pc_ex[:,:,1] =          Pc_ex[:,:,1]; @. Pc_ex[:,:,end] =          Pc_ex[:,:,end-1]
+    @. Pc_ex[ yce2>0 && (yce2 > (xce2*geom.surf.a1 + geom.surf.b1)) || yce2.>geom.y_plateau] = Ptop
+    return nothing
 end
 
 ############################################## MAIN CODE ##############################################
@@ -512,7 +513,7 @@ end
             vtkfile["Velocity"]    = (Array(Fc0), Array(Fc), Array(Fcit))
             @parallel EffectiveThermalConductivity!( dumc, Tc_ex, ϕi, phc, sc.T )
             vtkfile["kThermal"]    = Array(dumc)
-            @parallel Permeability!( dumc, ymin, dy, phc, δ, sc.L )
+            @parallel Permeability!( dumc, k_fact, ymin, dy, phc, δ, sc.L )
             vtkfile["Perm"]        = Array(dumc)
             @parallel FluidDensity!( dumc, Tc_ex, Pc_ex, phc, sc.T, sc.σ )
             vtkfile["Density"]     = Array(dumc)
