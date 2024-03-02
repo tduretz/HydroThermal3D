@@ -124,8 +124,8 @@ end
     Vizu       = false
     Save       = true
     fact       = 1
-    nt         = 5000
-    nout       = 10
+    nt         = 1
+    nout       = 100
     dt_fact    = 10
     sticky_air = false
 
@@ -224,6 +224,7 @@ end
     ncx      = fact*32-6
     ncy      = fact*8 -6
     ncz      = fact*8 -6
+    @info "ncx = $(ncx) ncy = $(ncy) ncz = $(ncz)"
     # Preprocessing
     if (USE_MPI) me, dims, nprocs, coords, comm = init_global_grid(ncx, ncy, ncz; dimx=2, dimy=2, dimz=2);             
     else         me, dims, nprocs, coords       = (0, [1,1,1], 1, [0,0,0]);
