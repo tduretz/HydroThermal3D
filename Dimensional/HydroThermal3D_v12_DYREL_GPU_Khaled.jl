@@ -124,8 +124,7 @@ end
     Advection  = true
     Vizu       = false
     Save       = true
-    fact       = 1
-    nt         = 1
+    nt         = 5000
     nout       = 100
     dt_fact    = 10
     sticky_air = false
@@ -239,9 +238,9 @@ end
     _dt      = 1.0/dt
     # PT iteration parameters
     nitmax  = 1e4
-    nitout  = 100
-    tolT    = 1e-10  # Thermal solver
-    tolP    = 1e-17  # Darcy solver
+    nitout  = 1000
+    tolT    = 1e-13  # Thermal solver
+    tolP    = 1e-18  # Darcy solver
     @info "Go go go!!"
 
     # Initialisation

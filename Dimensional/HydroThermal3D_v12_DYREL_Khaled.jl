@@ -119,16 +119,17 @@ end
     @info "Starting HydroThermal3D!"
 
     # Visualise
-    Hydro      = true
-    Thermal    = true
-    Advection  = true
-    Vizu       = true
-    Save       = true
-    fact       = 1
-    nt         = 100
-    nout       = 10
-    dt_fact    = 10
-    sticky_air = false
+    Hydro        = true
+    Thermal      = true
+    Advection    = true
+    Vizu         = true
+    Save         = false
+    fact         = 1
+    nt           = 1000
+    nout         = 10
+    restart_from = 0
+    dt_fact      = 5
+    sticky_air   = false
 
     # Characteristic dimensions
     sc   = scaling()
@@ -141,7 +142,7 @@ end
     # Physics
     xmin     = -0.0/sc.L;  xmax = 120.0e3/sc.L;   Lx = xmax - xmin
     ymin     = -30e3/sc.L; ymax =    10e3/sc.L;   Ly = ymax - ymin
-    zmin     = -20e3/sc.L; zmax =   20e3/sc.L;   Lz = zmax - zmin
+    zmin     = -20e3/sc.L; zmax =    20e3/sc.L;   Lz = zmax - zmin
     dT       = 600.0/sc.T
     Ttop     = 293.0/sc.T
     Tbot     = Ttop + dT
@@ -154,7 +155,7 @@ end
     g        = -9.81/(sc.L/sc.t^2)
     Qt       = 3.4e-6/(sc.W/sc.L^3)  
     δ        = 3000. /sc.L
-    k_fact   = 100.
+    k_fact   = 100.0
 
     # Initial conditions 
     # Main detachment fault
@@ -240,9 +241,9 @@ end
     _dt      = 1.0/dt
     # PT iteration parameters
     nitmax  = 1e4
-    nitout  = 100
-    tolT    = 1e-10  # Thermal solver
-    tolP    = 1e-17  # Darcy solver
+    nitout  = 1000
+    tolT    = 1e-13  # Thermal solver
+    tolP    = 1e-18  # Darcy solver
     @info "Go go go!!"
 
     # Initialisation
@@ -393,7 +394,7 @@ end
             λmax     = maximum_g(Xc0)
             λmin     = λmax / 500
             CFL_P    = 1.0
-            cfact    = 0.9
+            cfact    = 0.5
             Δτ       = 2.0./sqrt.(λmax)*CFL_P
             c        = 2.0*sqrt(λmin)*cfact
             h1, h2   = (2-c*Δτ)/(2+c*Δτ), 2*Δτ/(2+c*Δτ)
@@ -476,9 +477,9 @@ end
             p3 = heatmap(xc *sc.L/1e3, yv *sc.L/1e3, (Vy[:,:,2]'.*sc.V*100*year), c=:jet1, aspect_ratio=1, clims=(-27, 23), xlim=(0,120), ylim=(-30,5)) #title="Vy [cm/y]"*string(" @ t = ", tMa, " My" ) 
             
             x = Tc_ex[:,55,2]
-            p3 = plot(xce*sc.L/1e3, x.*sc.T.-273.15)
+            p1 = plot(xce*sc.L/1e3, x.*sc.T.-273.15, title="$(time*sc.t/year/1e6) Myr")
             
-            p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, phv[:,:,2]', c=:jet1, aspect_ratio=1, xlim=(0,120), ylim=(-30,5)) 
+            # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, phv[:,:,2]', c=:jet1, aspect_ratio=1, xlim=(0,120), ylim=(-30,5)) 
 
             # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, (k_ρf[:,:,2]'.*sc.kt), c=:jet1, aspect_ratio=1) 
             # p1 = heatmap(xv*sc.L/1e3, yv*sc.L/1e3, (k_ρf[:,:,2]'.*sc.t), c=:jet1, aspect_ratio=1) 

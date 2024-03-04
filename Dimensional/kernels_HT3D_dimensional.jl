@@ -184,7 +184,7 @@ end
     return nothing
 end
 
-@parallel_indices (i,j,k) function GershgorinPoisson!( G::Data.Array, iPC, ρC_eff::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, transient, dt::Data.Number, dx::Data.Number, dy::Data.Number, dz::Data.Number )
+@parallel_indices (i,j,k) function GershgorinPoisson!( G::Data.Array, D, ρC_eff::Data.Array, kx::Data.Array, ky::Data.Array, kz::Data.Array, transient, dt::Data.Number, dx::Data.Number, dy::Data.Number, dz::Data.Number )
     if i<=size(G, 1) && j<=size(G, 2) && k<=size(G, 3) 
         kW   = kx[i,j,k]
         kE   = kx[i+1,j,k]
@@ -194,7 +194,7 @@ end
         kB   = kz[i,j,k]
         rhoC = ρC_eff[i,j,k]
         G[i,j,k]    = abs(kE ./ dx .^ 2) + abs(kW ./ dx .^ 2) + abs(kN ./ dy .^ 2) + abs(kS ./ dy .^ 2) + abs(kB ./ dz .^ 2) + abs(kF ./ dz .^ 2) + abs((kB ./ dz + kF ./ dz) ./ dz + (kN ./ dy + kS ./ dy) ./ dy + (kE ./ dx + kW ./ dx) ./ dx + rhoC .* transient ./ dt)
-        iPC[i,j,k]  = ((kB ./ dz + kF ./ dz) ./ dz + (kN ./ dy + kS ./ dy) ./ dy + (kE ./ dx + kW ./ dx) ./ dx + rhoC .* transient ./ dt)
+        D[i,j,k]    = ((kB ./ dz + kF ./ dz) ./ dz + (kN ./ dy + kS ./ dy) ./ dy + (kE ./ dx + kW ./ dx) ./ dx + rhoC .* transient ./ dt)
         G[i,j,k]   /= ((kB ./ dz + kF ./ dz) ./ dz + (kN ./ dy + kS ./ dy) ./ dy + (kE ./ dx + kW ./ dx) ./ dx + rhoC .* transient ./ dt)
     end
     return nothing
