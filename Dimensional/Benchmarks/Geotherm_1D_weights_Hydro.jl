@@ -14,7 +14,7 @@ mm_y          = 1000*365*3600*24
 function main1D()
 
     # Activates non-linear solution
-    nonlinear = false
+    nonlinear = true
 
     # Physical parameters 
     ymin   = -30e3
@@ -83,7 +83,8 @@ function main1D()
                 # Thermal: Fixed flux
                 T[1]   = qmoho*Δy/kT[1] + T[2]
                 # Hydro: Fixed pressure
-                P[1]   = 2*Pmoho - P[2]
+                # P[1]   = 2*Pmoho - P[2]
+                P[1]   =  P[2]
             elseif phc[i]==-1 # SURFACE
                 # Thermal: Fixed temperature
                 T[i] = (Tsurf - (1-wN)*T[i-1])/wN    

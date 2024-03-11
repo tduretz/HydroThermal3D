@@ -55,16 +55,26 @@ end
         Tv  = 1.0/8.0*(Tce[i+1,j+1,k+1] + Tce[i+1,j,k+1] + Tce[i,j+1,k+1] + Tce[i,j,k+1])
         Tv += 1.0/8.0*(Tce[i+1,j+1,k+0] + Tce[i+1,j,k+0] + Tce[i,j+1,k+0] + Tce[i,j,k+0])
         Tv *= scale_T
+        # Capote
+        if Tv< 293.15
+            Tv = 293.15
+        end
         Pv  = 1.0/8.0*(Pce[i+1,j+1,k+1] + Pce[i+1,j,k+1] + Pce[i,j+1,k+1] + Pce[i,j,k+1])
         Pv += 1.0/8.0*(Pce[i+1,j+1,k+0] + Pce[i+1,j,k+0] + Pce[i,j+1,k+0] + Pce[i,j,k+0])
         Pv *= scale_σ
         y   = ymin + (j-1)*Δy
         ρk_μ = ρf_C(Tv - 273.15, Pv) * kF(y*scale_L, δ*scale_L) /  μf(Tv)
-        if mode == 1
+        if mode == 1 # conductivity*rho
             kfv[i,j,k]  = ρk_μ / scale_t
-        elseif mode == 2
+            # if ρk_μ / scale_t <1e-200
+            #     @show Tv, Pv, μf(Tv), ρf_C(Tv - 273.15, Pv) 
+            # end
+            # if ρk_μ / scale_t >1.0
+            #     @show Tv, Pv, μf(Tv), ρf_C(Tv - 273.15, Pv) 
+            # end
+        elseif mode == 2 # conductivity
             kfv[i,j,k] = (kF(y*scale_L, δ*scale_L) /  μf(Tv)) / (scale_L^2/scale_η)
-        elseif mode == 3
+        elseif mode == 3 # permeability
             kfv[i,j,k] =  kF(y*scale_L, δ*scale_L) /  scale_L^2
         end
         # Fault
@@ -97,7 +107,6 @@ end
     @all(a) = @all(b)*@all(c)
     return nothing
 end
-
 
 @parallel function SmoothConductivityV2C( ktc, ktv )
     @all(ktc) = @av(ktv)
@@ -136,24 +145,26 @@ end
     return nothing
 end
 
-@parallel_indices (i,j,k) function ComputeρCeffective!(ρC_eff::Data.Array, Tc_ex::Data.Array, Pc_ex::Data.Array, phc, ϕi, sca_T, sca_σ, sca_C, sca_ρ)
+@parallel_indices (i,j,k) function ComputeρCeffective!(ρC_eff::Data.Array, Tc_ex::Data.Array, Pc_ex::Data.Array, phc_ex, ϕi, sca_T, sca_σ, sca_C, sca_ρ)
     if i<=size(ρC_eff, 1) && j<=size(ρC_eff, 2) && k<=size(ρC_eff, 3)
-        if phc[i,j,k] != 1.0      
+        ph = phc_ex[i+1,j+1,k+1]
+        if abs(ph) != 1.0 
             Tsca          = Tc_ex[i+1,j+1,k+1]*sca_T
             Psca          = Pc_ex[i+1,j+1,k+1]*sca_σ
-            ρ_eff         = ϕ(phc[i,j,k],ϕi)*ρf_C(Tsca-273.15, Psca) + (1.0-ϕ(phc[i,j,k],ϕi))*ρs(Tsca)
-            Ceff          = ϕ(phc[i,j,k],ϕi)*Cf(Tsca)                + (1.0-ϕ(phc[i,j,k],ϕi))*Cs(Tsca)
+            ρ_eff         = ϕ(ph,ϕi)*ρf_C(Tsca-273.15, Psca) + (1.0-ϕ(ph,ϕi))*ρs(Tsca)
+            Ceff          = ϕ(ph,ϕi)*Cf(Tsca)                + (1.0-ϕ(ph,ϕi))*Cs(Tsca)
             ρC_eff[i,j,k] = (ρ_eff*Ceff)/sca_ρ/sca_C
         end
     end
     return nothing
 end
 
-@parallel_indices (i,j,k) function ResidualTemperatureLinearised!(F::Data.Array, Tc_ex::Data.Array, Tc_old::Data.Array, ρC_eff, phc, PC, qx, qy, qz, Qt, transient, _dt::Data.Number, _dx, _dy, _dz)
+@parallel_indices (i,j,k) function ResidualTemperatureLinearised!(F::Data.Array, Tc_ex::Data.Array, Tc_old::Data.Array, ρC_eff, phc_ex, PC, qx, qy, qz, Qt, transient, _dt::Data.Number, _dx, _dy, _dz)
     if i<=size(F, 1) && j<=size(F, 2) && k<=size(F, 3)
-        if phc[i,j,k] != 1.0  # if not air
+        ph = phc_ex[i+1,j+1,k+1]
+        if abs(ph) != 1.0  # if not air
             Q = 0.
-            if phc[i,j,k] == 3.0
+            if ph == 3.0
                 Q = Qt
             end         
             F[i,j,k]  = transient*ρC_eff[i,j,k]*_dt*(Tc_ex[i+1,j+1,k+1] - Tc_old[i,j,k]) 
@@ -169,18 +180,27 @@ end
     return nothing
 end
 
-@parallel_indices (ix,iy,iz) function SetTemperatureBCs!(Tc_ex::Data.Array, phc, qyS::Data.Number, _dy, kS, TN::Data.Number, y_plateau, a2, b2, dTdy, Δx, Δy, sticky_air )
-    if (ix<size(phc,1) && iy<=size(phc,2) && iz<=size(phc,3))
-        if phc[ix,iy,iz] == 1.0
-            Tc_ex[ix+1,iy+1,iz+1] = TN
-        end
+@parallel_indices (ix,iy,iz) function SetTemperatureBCs!(Tc_ex::Data.Array, ky, wN, phc_ex, qyS::Data.Number, _dy, kS, TS, TN::Data.Number, y_plateau, a2, b2, dTdy, Δx, Δy, sticky_air, sca_T, sca_kT, ϕi )
+    
+    inTc_ex = ix<=size(Tc_ex,1) && iy<=size(Tc_ex,2) && iz<=size(Tc_ex,3)
+
+    if ( inTc_ex && phc_ex[ix,iy,iz] == 1.0)
+        Tc_ex[ix,iy,iz] = TN
     end
-    if (ix==1             && iy<=size(Tc_ex,2) && iz<=size(Tc_ex,3)) Tc_ex[1            ,iy,iz] =              Tc_ex[2              ,iy,iz]  end
-    if (ix==size(Tc_ex,1) && iy<=size(Tc_ex,2) && iz<=size(Tc_ex,3)) Tc_ex[size(Tc_ex,1),iy,iz] =              Tc_ex[size(Tc_ex,1)-1,iy,iz]  end
-    if (ix<=size(Tc_ex,1) && iy==1             && iz<=size(Tc_ex,3)) Tc_ex[ix            ,1,iz] = qyS/_dy/kS + Tc_ex[ix              ,2,iz]  end
-    if (ix<=size(Tc_ex,1) && iy==size(Tc_ex,2) && iz<=size(Tc_ex,3)) Tc_ex[ix,size(Tc_ex,2),iz] =       2*TN - Tc_ex[ix,size(Tc_ex,2)-1,iz]  end
-    if (ix<=size(Tc_ex,1) && iy<=size(Tc_ex,2) && iz==1            ) Tc_ex[ix,iy,            1] =              Tc_ex[ix,iy,              2]  end
-    if (ix<=size(Tc_ex,1) && iy<=size(Tc_ex,2) && iz==size(Tc_ex,3)) Tc_ex[ix,iy,size(Tc_ex,3)] =              Tc_ex[ix,iy,size(Tc_ex,3)-1]  end
+    if (ix==1             && iy>1 && iy<=size(Tc_ex,2)-1 && iz>1 && iz<=size(Tc_ex,3)) Tc_ex[1            ,iy,iz] =              Tc_ex[2              ,iy,iz]  end
+    if (ix==size(Tc_ex,1) && iy>1 && iy<=size(Tc_ex,2)-1 && iz>1 && iz<=size(Tc_ex,3)) Tc_ex[size(Tc_ex,1),iy,iz] =              Tc_ex[size(Tc_ex,1)-1,iy,iz]  end
+    # Bottom Neumann
+    if (iy==1             && ix>1 && ix<=size(Tc_ex,1)-1 && iz>1 && iz<=size(Tc_ex,3)-1)
+        kS = ky[ix-1,1,iz-1]
+        Tc_ex[ix,1,iz] =  qyS/_dy/kS + Tc_ex[ix,2,iz]
+        # Tc_ex[ix,1,iz] =  2*TS - Tc_ex[ix,2,iz]
+    end
+    # Top Dirichlet
+    if ( inTc_ex && phc_ex[ix,iy,iz] == -1.0 ) 
+        Tc_ex[ix,iy,iz] =  (TN - (1.0-wN[ix,iz])*Tc_ex[ix,iy-1,iz])  / wN[ix,iz]
+    end
+    if (iz==1             && ix>1 && ix<=size(Tc_ex,1)-1 && iy>1 && iy<=size(Tc_ex,2)-1) Tc_ex[ix,iy,            1] =              Tc_ex[ix,iy,              2]  end
+    if (iz==size(Tc_ex,3) && ix>1 && ix<=size(Tc_ex,1)-1 && iy>1 && iy<=size(Tc_ex,2)-1) Tc_ex[ix,iy,size(Tc_ex,3)] =              Tc_ex[ix,iy,size(Tc_ex,3)-1]  end
     return nothing
 end
 
@@ -202,23 +222,37 @@ end
 
 ######################################### HYDRO #########################################
 
-@parallel_indices (i,j,k) function ϕρf(ϕρfc, Tc_ex, Pc_ex, phc, ϕi, scale_ρ, scale_T, scale_σ)
-    if i<=size(ϕρfc, 1) && j<=size(ϕρfc, 2) && k<=size(ϕρfc, 3) 
-        if phc[i,j,k] != 1.0 # if not air
+@parallel_indices (i,j,k) function ϕρf(ϕρfc, Tc_ex, Pc_ex, phc_ex, ϕi, scale_ρ, scale_T, scale_σ)
+    if i<=size(ϕρfc, 1) && j<=size(ϕρfc, 2) && k<=size(ϕρfc, 3)
+        ph = phc_ex[i+1,j+1,k+1]
+        if ph != 1.0 # if not air
             T = Tc_ex[i+1,j+1,k+1]*scale_T - 273.15
             P = Pc_ex[i+1,j+1,k+1]*scale_σ
-            ϕρfc[i,j,k] =  ϕ(phc[i,j,k], ϕi) * ρf_C(T, P) / scale_ρ
+            ϕρfc[i,j,k] =  ϕ(ph, ϕi) * ρf_C(T, P) / scale_ρ
         end
     end    
     return nothing
 end
 
-@parallel_indices (i,j,k) function ϕdρdP!(ϕdρdP, Tc_ex, Pc_ex, phc, ϕi, scale_ρ, scale_T, scale_σ)
+@parallel_indices (i,j,k) function ϕρf_old(ϕρfc, Tc0, Pc0, phc_ex, ϕi, scale_ρ, scale_T, scale_σ)
+    if i<=size(ϕρfc, 1) && j<=size(ϕρfc, 2) && k<=size(ϕρfc, 3) 
+        ph = phc_ex[i+1,j+1,k+1]
+        if ph != 1.0 # if not air
+            T = Tc0[i,j,k]*scale_T - 273.15
+            P = Pc0[i,j,k]*scale_σ
+            ϕρfc[i,j,k] =  ϕ(ph, ϕi) * ρf_C(T, P) / scale_ρ
+        end
+    end    
+    return nothing
+end
+
+@parallel_indices (i,j,k) function ϕdρdP!(ϕdρdP, Tc_ex, Pc_ex, phc_ex, ϕi, scale_ρ, scale_T, scale_σ)
     if i<=size(ϕdρdP, 1) && j<=size(ϕdρdP, 2) && k<=size(ϕdρdP, 3) 
-        if phc[i,j,k] != 1.0 # if not air
+        ph = phc_ex[i+1,j+1,k+1]
+        if ph != 1.0 # if not air
             T = Tc_ex[i+1,j+1,k+1]*scale_T - 273.15
             P = Pc_ex[i+1,j+1,k+1]*scale_σ
-            ϕdρdP[i,j,k] =  ϕ(phc[i,j,k], ϕi) * dρdP_C(T, P) / (scale_ρ/scale_σ)
+            ϕdρdP[i,j,k] =  ϕ(ph, ϕi) * dρdP_C(T, P) / (scale_ρ/scale_σ)
         end
     end    
     return nothing
@@ -237,10 +271,11 @@ end
     return nothing
 end
 
-@parallel_indices (i,j,k) function ResidualFluidPressure!(F::Data.Array, phc, ϕρfc, ϕρfc0, PC, qx::Data.Array, qy::Data.Array, qz::Data.Array, transient,
+@parallel_indices (i,j,k) function ResidualFluidPressure!(F::Data.Array, phc_ex, ϕρfc, ϕρfc0, PC, qx::Data.Array, qy::Data.Array, qz::Data.Array, transient,
     _dt::Data.Number, _dx::Data.Number, _dy::Data.Number, _dz::Data.Number)
     if i<=size(F, 1) && j<=size(F, 2) && k<=size(F, 3)
-        if phc[i,j,k] != 1.0      
+        ph = phc_ex[i+1,j+1,k+1]
+        if abs(ph) != 1.0      
             F[i,j,k]  = transient*_dt*(ϕρfc[i,j,k] - ϕρfc0[i,j,k]) 
             F[i,j,k] += (qx[i+1,j,k] - qx[i,j,k])*_dx
             F[i,j,k] += (qy[i,j+1,k] - qy[i,j,k])*_dy
@@ -253,18 +288,28 @@ end
     return nothing
 end
 
-@parallel_indices (ix,iy,iz) function SetPressureBCs!(Pc_ex::Data.Array, phc, PS::Data.Number, PN::Data.Number, y_plateau, a2, b2, ρf, g, Δx, Δy, sticky_air )
-    if (ix<size(phc,1) && iy<=size(phc,2) && iz<=size(phc,3))
-        if phc[ix,iy,iz] == 1.0
-            Pc_ex[ix+1,iy+1,iz+1] = PN
+@parallel_indices (ix,iy,iz) function SetPressureBCs!(Pc_ex::Data.Array, wN, phc_ex, PS::Data.Number, PN::Data.Number, y_plateau, a2, b2, ρf, g, Δx, Δy, sticky_air )
+    
+    inPc_ex = ix<=size(Pc_ex,1) && iy<=size(Pc_ex,2) && iz<=size(Pc_ex,3)
+
+    if (inPc_ex && phc_ex[ix,iy,iz] == 1.0)
+        if phc_ex[ix,iy,iz] == 1.0
+            Pc_ex[ix,iy,iz] = PN
         end
     end
-    if (ix==1             && iy<=size(Pc_ex,2) && iz<=size(Pc_ex,3)) Pc_ex[1            ,iy,iz] =          Pc_ex[2              ,iy,iz]  end
-    if (ix==size(Pc_ex,1) && iy<=size(Pc_ex,2) && iz<=size(Pc_ex,3)) Pc_ex[size(Pc_ex,1),iy,iz] =          Pc_ex[size(Pc_ex,1)-1,iy,iz]  end
-    if (ix<=size(Pc_ex,1) && iy==1             && iz<=size(Pc_ex,3)) Pc_ex[ix            ,1,iz] =   2*PS - Pc_ex[ix              ,2,iz]  end
-    if (ix<=size(Pc_ex,1) && iy==size(Pc_ex,2) && iz<=size(Pc_ex,3)) Pc_ex[ix,size(Pc_ex,2),iz] =   2*PN - Pc_ex[ix,size(Pc_ex,2)-1,iz]  end
-    if (ix<=size(Pc_ex,1) && iy<=size(Pc_ex,2) && iz==1            ) Pc_ex[ix,iy,            1] =          Pc_ex[ix,iy,              2]  end
-    if (ix<=size(Pc_ex,1) && iy<=size(Pc_ex,2) && iz==size(Pc_ex,3)) Pc_ex[ix,iy,size(Pc_ex,3)] =          Pc_ex[ix,iy,size(Pc_ex,3)-1]  end
+    if (ix==1             && iy>1 && iy<=size(Pc_ex,2)-1 && iz>1 && iz<=size(Pc_ex,3)-1) Pc_ex[1            ,iy,iz] =          Pc_ex[2              ,iy,iz]  end
+    if (ix==size(Pc_ex,1) && iy>1 && iy<=size(Pc_ex,2)-1 && iz>1 && iz<=size(Pc_ex,3)-1) Pc_ex[size(Pc_ex,1),iy,iz] =          Pc_ex[size(Pc_ex,1)-1,iy,iz]  end
+    # if (iy==1             && ix>1 && ix<=size(Pc_ex,1)-1 && iz>1 && iz<=size(Pc_ex,3)-1) Pc_ex[ix            ,1,iz] =   2*PS - Pc_ex[ix              ,2,iz]  end
+    if (iy==1             && ix>1 && ix<=size(Pc_ex,1)-1 && iz>1 && iz<=size(Pc_ex,3)-1) Pc_ex[ix            ,1,iz] =   Pc_ex[ix              ,2,iz]  end
+    # if (iy==size(Pc_ex,2) && ix>1 && ix<=size(Pc_ex,1)-1 && iz>1 && iz<=size(Pc_ex,3)-1) 
+    #     Pc_ex[ix,size(Pc_ex,2),iz] =   2*PN - Pc_ex[ix,size(Pc_ex,2)-1,iz]  
+    # end
+     # Top Dirichlet
+     if ( inPc_ex && phc_ex[ix,iy,iz] == -1.0 ) 
+        Pc_ex[ix,iy,iz] =  (PN - (1.0-wN[ix,iz])*Pc_ex[ix,iy-1,iz])  / wN[ix,iz]
+    end
+    if (iz==1             && ix>1 && ix<=size(Pc_ex,1)-1 && iy>1 && iy<=size(Pc_ex,2)-1) Pc_ex[ix,iy,            1] =          Pc_ex[ix,iy,              2]  end
+    if (iz==size(Pc_ex,3) && ix>1 && ix<=size(Pc_ex,1)-1 && iy>1 && iy<=size(Pc_ex,2)-1) Pc_ex[ix,iy,size(Pc_ex,3)] =          Pc_ex[ix,iy,size(Pc_ex,3)-1]  end
     return nothing
 end
 
