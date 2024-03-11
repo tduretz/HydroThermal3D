@@ -638,7 +638,7 @@ end
 
         if ( Save && (it==1 || mod(it, nout)==0) )
             filename = @sprintf("/HT3DOutput%05d", it)
-            vtkfile  = vtk_grid(path*filename, Array(xc), Array(yc), Array(zc))
+            vtkfile  = vtk_grid(path*filename, Array(Float32.(xc)), Array(Float32.(yc)), Array(Float32.(zc)))
             @parallel Phase!( dumc, phc_ex )
             vtkfile["Phase"]       = Array(Float32.(dumc))
             @parallel Pressure!( dumc, Pc_ex, phc_ex, sc.σ )
@@ -646,7 +646,7 @@ end
             @parallel Temperature!( dumc, Tc_ex, phc_ex, sc.T )
             vtkfile["Temperature"] = Array(Float32.(dumc))
             @parallel Velocity!( Fc0, Fc, Fcit, Vx, Vy, Vz, phc_ex, sc.V )
-            vtkfile["Velocity"]    = (Array(Fc0), Array(Fc), Array(Fcit))
+            vtkfile["Velocity"]    = (Array(Float32.(Fc0)), Array(Float32.(Fc)), Array(Float32.(Fcit)))
             @parallel EffectiveThermalConductivity!( dumc, Tc_ex, ϕi, phc_ex, sc.T )
             vtkfile["ThermalConductivity"]    = Array(Float32.(dumc))
             @parallel Permeability!( dumc, k_fact, ymin, dy, phc_ex, δ, sc.L )
