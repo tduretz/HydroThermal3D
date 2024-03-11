@@ -17,9 +17,10 @@ else
 macro sqrt(args...) esc(:(Base.sqrt($(args...)))) end
 macro exp(args...)  esc(:(Base.exp($(args...)))) end
 end
-using Printf, Statistics, LinearAlgebra, Plots
+using Printf, Statistics, LinearAlgebra
 using WriteVTK, HDF5
-plotlyjs()
+# using Plots
+# plotlyjs()
 # gr()
 year = 365*3600*24
 
@@ -138,10 +139,10 @@ end
     @info "Starting HydroThermal3D!"
 
     # Visualise
-    Hydro         = false
-    Thermal       = false
-    Advection     = false
-    Vizu          = true
+    Hydro         = true
+    Thermal       = true
+    Advection     = true
+    Vizu          = false
     Save          = true
     path          = @__DIR__ # current directory
     restart_from  = 0
@@ -290,7 +291,7 @@ end
     @printf("Surface T = %03f, bottom T = %03f, qy = %03f\n", Ttop*sc.T, Tbot*sc.T, qyS*(sc.W/sc.L^2))
 
     # Numerics
-    fact     = 8
+    fact     = 16
     ncx      = fact*32-6
     ncy      = fact*14-6
     ncz      = fact*23-6
