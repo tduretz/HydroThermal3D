@@ -2,7 +2,7 @@
 # a pluton instead of a heat source
 # sub time stepping for advection
 # new model dimensions
-const USE_GPU  = false
+const USE_GPU  = true
 const GPU_ID   = 0
 const USE_MPI  = false
 using ParallelStencil
@@ -146,8 +146,8 @@ end
     Save          = true
     path          = @__DIR__ # current directory
     restart_from  = 0
-    nt            = 1
-    nout          = 10
+    nt            = 6400
+    nout          = 100
     dt_fact       = 5
     dt_constant   = true
     sticky_air    = false
@@ -593,72 +593,72 @@ end
         end
 
         #---------------------------------------------------------------------
-        if (Vizu && mod(it, nout) == 0 || it==1)
-            tMa = @sprintf("%03f", time*sc.t/1e6/year)
-            @show tMa
-            y_topo = Topography.( xce, geometry.y_plateau, geometry.surf.a1, geometry.surf.b1 )
-            # p1 = heatmap(xce*sc.L/1e3, yce*sc.L/1e3, (Tc_ex[:,:,2]'.*sc.T.-273.15), c=cgrad(:hot, rev=true), aspect_ratio=1, clims=(0, 700), xlim=(0,120), ylim=(-30,5)) 
+        # if (Vizu && mod(it, nout) == 0 || it==1)
+        #     tMa = @sprintf("%03f", time*sc.t/1e6/year)
+        #     @show tMa
+        #     y_topo = Topography.( xce, geometry.y_plateau, geometry.surf.a1, geometry.surf.b1 )
+        #     # p1 = heatmap(xce*sc.L/1e3, yce*sc.L/1e3, (Tc_ex[:,:,2]'.*sc.T.-273.15), c=cgrad(:hot, rev=true), aspect_ratio=1, clims=(0, 700), xlim=(0,120), ylim=(-30,5)) 
             
-            T1 = copy(Tc_ex)
-            T1[phc_ex.==1.0 .|| phc_ex.==-1.0] .= NaN 
-            minT = 20.
-            maxT = 620.
-            minT = minimum(Tc_ex[2:end-1,2:end-1,2:end-1]).*sc.T .- 273.15
-            maxT = maximum(Tc_ex[2:end-1,2:end-1,2:end-1]).*sc.T .- 273.15
-            TMoho = 0.5*(Tc_ex[2,1,2] + Tc_ex[2,2,2]).*sc.T .- 273.15
-            PMoho = 0.5*(Pc_ex[2,1,2] + Pc_ex[2,2,2]).*sc.σ / 1e6
+        #     T1 = copy(Tc_ex)
+        #     T1[phc_ex.==1.0 .|| phc_ex.==-1.0] .= NaN 
+        #     minT = 20.
+        #     maxT = 620.
+        #     minT = minimum(Tc_ex[2:end-1,2:end-1,2:end-1]).*sc.T .- 273.15
+        #     maxT = maximum(Tc_ex[2:end-1,2:end-1,2:end-1]).*sc.T .- 273.15
+        #     TMoho = 0.5*(Tc_ex[2,1,2] + Tc_ex[2,2,2]).*sc.T .- 273.15
+        #     PMoho = 0.5*(Pc_ex[2,1,2] + Pc_ex[2,2,2]).*sc.σ / 1e6
 
-            TMoho_str  = @sprintf("%1.3lf", TMoho)
-            # qTmoho_str = @sprintf("%1.3lf", qT[1])
-            # kTmoho_str = @sprintf("%1.3lf", kT[1])
-            PMoho_str  = @sprintf("%1.3lf", PMoho)
-            # qHmoho_str = @sprintf("%1.3e",  qH[1])
-            # kHmoho_str = @sprintf("%1.3e",  kH[1])
+        #     TMoho_str  = @sprintf("%1.3lf", TMoho)
+        #     # qTmoho_str = @sprintf("%1.3lf", qT[1])
+        #     # kTmoho_str = @sprintf("%1.3lf", kT[1])
+        #     PMoho_str  = @sprintf("%1.3lf", PMoho)
+        #     # qHmoho_str = @sprintf("%1.3e",  qH[1])
+        #     # kHmoho_str = @sprintf("%1.3e",  kH[1])
     
-            p1 = heatmap(xc*sc.L/1e3, yc*sc.L/1e3, (T1[2:end-1,2:end-1,2]'.*sc.T.-273.15), c=:jet1, aspect_ratio=1, xlim=(xmin*sc.L/1e3, xmax*sc.L/1e3), ylim=(-30,5), clim=(minT,maxT), title="T Moho = $(TMoho_str)", titlefont = font(12,"Computer Modern")) 
+        #     p1 = heatmap(xc*sc.L/1e3, yc*sc.L/1e3, (T1[2:end-1,2:end-1,2]'.*sc.T.-273.15), c=:jet1, aspect_ratio=1, xlim=(xmin*sc.L/1e3, xmax*sc.L/1e3), ylim=(-30,5), clim=(minT,maxT), title="T Moho = $(TMoho_str)", titlefont = font(12,"Computer Modern")) 
 
-            P1 =  copy(Pc_ex)
-            P1[phc_ex.==1.0 .|| phc_ex.==-1.0] .= NaN 
-            minP = 1e5/1e6
-            maxP = 294
-            p2 = heatmap(xc*sc.L/1e3, yc*sc.L/1e3, (P1[2:end-1,2:end-1,2]'.*sc.σ./1e6), c=:jet1, aspect_ratio=1, xlim=(xmin*sc.L/1e3, xmax*sc.L/1e3), ylim=(-30,5), clim=(minP,maxP), title="P Moho = $(PMoho_str)", titlefont = font(12,"Computer Modern")) 
+        #     P1 =  copy(Pc_ex)
+        #     P1[phc_ex.==1.0 .|| phc_ex.==-1.0] .= NaN 
+        #     minP = 1e5/1e6
+        #     maxP = 294
+        #     p2 = heatmap(xc*sc.L/1e3, yc*sc.L/1e3, (P1[2:end-1,2:end-1,2]'.*sc.σ./1e6), c=:jet1, aspect_ratio=1, xlim=(xmin*sc.L/1e3, xmax*sc.L/1e3), ylim=(-30,5), clim=(minP,maxP), title="P Moho = $(PMoho_str)", titlefont = font(12,"Computer Modern")) 
 
-            # @parallel Peclet!( dumc, Tc_ex, Pc_ex, Vx, Vy, Vz, phc, ϕi, sc.T, sc.σ, sc.V, sc.L )
-            VxC = 0.5*(Vx[1:end-1,:,:] .+ Vx[2:end-0,:,:])
-            VyC = 0.5*(Vy[:,1:end-1,:] .+ Vy[:,2:end-0,:])
-            VzC = 0.5*(Vz[:,:,1:end-1] .+ Vz[:,:,2:end-0])
-            V1 = sqrt.(VxC[:,:,:].^2 .+ VyC[:,:,:].^2 .+ VzC[:,:,:].^2)
-            V1[phc_ex[2:end-1,2:end-1,2:end-1].==1.0 .|| phc_ex[2:end-1,2:end-1,2:end-1].==-1.0] .= NaN 
-            p3 = heatmap(xc *sc.L/1e3, yc *sc.L/1e3, (V1[:,:,2]'.*sc.V*100*year), c=:jet1, aspect_ratio=1, xlim=(xmin*sc.L/1e3, xmax*sc.L/1e3), ylim=(-30,5), title="|V| [cm/y]"*string(" @ t = ", tMa, " My" ), titlefont = font(12,"Computer Modern") )
+        #     # @parallel Peclet!( dumc, Tc_ex, Pc_ex, Vx, Vy, Vz, phc, ϕi, sc.T, sc.σ, sc.V, sc.L )
+        #     VxC = 0.5*(Vx[1:end-1,:,:] .+ Vx[2:end-0,:,:])
+        #     VyC = 0.5*(Vy[:,1:end-1,:] .+ Vy[:,2:end-0,:])
+        #     VzC = 0.5*(Vz[:,:,1:end-1] .+ Vz[:,:,2:end-0])
+        #     V1 = sqrt.(VxC[:,:,:].^2 .+ VyC[:,:,:].^2 .+ VzC[:,:,:].^2)
+        #     V1[phc_ex[2:end-1,2:end-1,2:end-1].==1.0 .|| phc_ex[2:end-1,2:end-1,2:end-1].==-1.0] .= NaN 
+        #     p3 = heatmap(xc *sc.L/1e3, yc *sc.L/1e3, (V1[:,:,2]'.*sc.V*100*year), c=:jet1, aspect_ratio=1, xlim=(xmin*sc.L/1e3, xmax*sc.L/1e3), ylim=(-30,5), title="|V| [cm/y]"*string(" @ t = ", tMa, " My" ), titlefont = font(12,"Computer Modern") )
         
-            display(plot(p1, p2, p3, layout=(3,1)))
-            @printf("Imaged sliced at z index %d over ncx = %d, ncy = %d, ncz = %d --- time is %02f Ma\n", Int(ceil(ncz/2)), ncx, ncy, ncz, time*sc.t/1e6/year)
-        end
+        #     display(plot(p1, p2, p3, layout=(3,1)))
+        #     @printf("Imaged sliced at z index %d over ncx = %d, ncy = %d, ncz = %d --- time is %02f Ma\n", Int(ceil(ncz/2)), ncx, ncy, ncz, time*sc.t/1e6/year)
+        # end
         #---------------------------------------------------------------------
 
-        if ( Save && mod(it, nout) == 0 )
+        if ( Save && (it==1 || mod(it, nout)==0) )
             filename = @sprintf("/HT3DOutput%05d", it)
             vtkfile  = vtk_grid(path*filename, Array(xc), Array(yc), Array(zc))
             @parallel Phase!( dumc, phc_ex )
-            vtkfile["Phase"]       = Array(dumc)
+            vtkfile["Phase"]       = Array(Float32.(dumc))
             @parallel Pressure!( dumc, Pc_ex, phc_ex, sc.σ )
-            vtkfile["Pressure"]    = Array(dumc)
+            vtkfile["Pressure"]    = Array(Float32.(dumc))
             @parallel Temperature!( dumc, Tc_ex, phc_ex, sc.T )
-            vtkfile["Temperature"] = Array(dumc)
+            vtkfile["Temperature"] = Array(Float32.(dumc))
             @parallel Velocity!( Fc0, Fc, Fcit, Vx, Vy, Vz, phc_ex, sc.V )
             vtkfile["Velocity"]    = (Array(Fc0), Array(Fc), Array(Fcit))
             @parallel EffectiveThermalConductivity!( dumc, Tc_ex, ϕi, phc_ex, sc.T )
-            vtkfile["kThermal"]    = Array(dumc)
+            vtkfile["ThermalConductivity"]    = Array(Float32.(dumc))
             @parallel Permeability!( dumc, k_fact, ymin, dy, phc_ex, δ, sc.L )
-            vtkfile["Perm"]        = Array(dumc)
+            vtkfile["Permeability"]        = Array(Float32.(dumc))
             @parallel FluidDensity!( dumc, Tc_ex, Pc_ex, phc_ex, sc.T, sc.σ )
-            vtkfile["Density"]     = Array(dumc)
+            vtkfile["Density"]     = Array(Float32.(dumc))
             @parallel Viscosity!( dumc, Tc_ex, phc_ex, sc.T )
-            vtkfile["Viscosity"]   = Array(dumc)
+            vtkfile["Viscosity"]   = Array(Float32.(dumc))
             @parallel Peclet!( dumc, Tc_ex, Pc_ex, Vx, Vy, Vz, phc_ex, ϕi, sc.T, sc.σ, sc.V, sc.L )
-            vtkfile["Peclet"]   = Array(dumc)
+            vtkfile["Peclet"]   = Array(Float32.(dumc))
             @parallel EffectiveHeatCapacity!( dumc, Tc_ex, Pc_ex, phc_ex, ϕi, sc.T, sc.σ, sc.C, sc.ρ)
-            vtkfile["HeatCapacity"] = Array(dumc)
+            vtkfile["HeatCapacity"] = Array(Float32.(dumc))
             outfiles = vtk_save(vtkfile)
         end
         #---------------------------------------------------------------------
