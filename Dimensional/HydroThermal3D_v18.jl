@@ -146,7 +146,7 @@ end
     Save          = true
     path          = @__DIR__ # current directory
     restart_from  = 0
-    nt            = 0
+    nt            = 10
     nout          = 10
     dt_fact       = 5
     dt_constant   = true
@@ -177,8 +177,8 @@ end
     Qt        = 0.0#*3.4e-4/(sc.W/sc.L^3)  
     T_pluton  = (700. + 273.15)/sc.T  
     δ         = 3000. /sc.L
-    k_fact    = 100.
-    y_plateau = 2.0*1.5e3/sc.L
+    k_fact    = 50.
+    y_plateau = 1.0*1.5e3/sc.L
 
     # Initial conditions 
     # Main detachment fault
@@ -318,10 +318,8 @@ end
     phc_ex   =  @ones(ncx+2,ncy+2,ncz+2) # Phase on centroids 
     phv      =  @ones(ncx+1,ncy+1,ncz+1) # Phase on vertices
     Xc0      = @zeros(ncx+0,ncy+0,ncz+0) # Common for P and T
-
     Tc0      = @zeros(ncx+0,ncy+0,ncz+0) # Common for P and T
     Pc0      = @zeros(ncx+0,ncy+0,ncz+0) # Common for P and T
-
     wN       = @zeros(ncx+2,ncz+2) # 2D table of weights for node above surface
     Xcit     = @zeros(ncx+0,ncy+0,ncz+0) # Common for P and T
     PC       =  @ones(ncx+0,ncy+0,ncz+0) # Common for P and T
@@ -342,7 +340,7 @@ end
     Vz       = @zeros(ncx  ,ncy  ,ncz+1) # Solution array 
     Tc_ex    = @zeros(ncx+2,ncy+2,ncz+2) # Solution array
     Pc_ex    = @zeros(ncx+2,ncy+2,ncz+2) # Solution array
-    Tc_exxx  = @zeros(ncx+6,ncy+6,ncz+6)
+    Tc_exxx  = @zeros(ncx+6,ncy+6,ncz+6) # Solution array
     @info "Memory was allocated!"
 
     # Pre-processing
@@ -648,7 +646,7 @@ end
             ax = Axis(fig[2,3], aspect=DataAspect(), title="Velocity (cm/y) "*string(" @ t = ", tMa, " My" ))
             p4 = heatmap!(ax, xv *sc.L/1e3, yv *sc.L/1e3, V1[:,:,2].*sc.V*100*year, colormap=:jet1, colorrange=(0, 50))# aspect_ratio=1, xlim=(xmin*sc.L/1e3, xmax*sc.L/1e3), ylim=(-30,5), title="Phases"*string(" @ t = ", tMa, " My" ), titlefont = font(12,"Computer Modern") )
             Colorbar(fig[2, 4], p4)
-
+            
             #-----------#
             display(fig)
             @printf("Imaged sliced at z index %d over ncx = %d, ncy = %d, ncz = %d --- time is %02f Ma\n", Int(ceil(ncz/2)), ncx, ncy, ncz, time*sc.t/1e6/year)
@@ -659,23 +657,23 @@ end
             filename = @sprintf("/HT3DOutput%05d", it)
             vtkfile  = vtk_grid(path*filename, Array(xc), Array(yc), Array(zc))
             @parallel Phase!( dumc, phc_ex )
-            vtkfile["Phase"]       = Array(dumc)
+            vtkfile["Phase"]        = Array(dumc)
             @parallel Pressure!( dumc, Pc_ex, phc_ex, sc.σ )
-            vtkfile["Pressure"]    = Array(dumc)
+            vtkfile["Pressure"]     = Array(dumc)
             @parallel Temperature!( dumc, Tc_ex, phc_ex, sc.T )
-            vtkfile["Temperature"] = Array(dumc)
+            vtkfile["Temperature"]  = Array(dumc)
             @parallel Velocity!( Fc0, Fc, Fcit, Vx, Vy, Vz, phc_ex, sc.V )
-            vtkfile["Velocity"]    = (Array(Fc0), Array(Fc), Array(Fcit))
+            vtkfile["Velocity"]     = (Array(Fc0), Array(Fc), Array(Fcit))
             @parallel EffectiveThermalConductivity!( dumc, Tc_ex, ϕi, phc_ex, sc.T )
-            vtkfile["kThermal"]    = Array(dumc)
+            vtkfile["kThermal"]     = Array(dumc)
             @parallel Permeability!( dumc, k_fact, ymin, dy, phc_ex, δ, sc.L )
-            vtkfile["Perm"]        = Array(dumc)
+            vtkfile["Perm"]         = Array(dumc)
             @parallel FluidDensity!( dumc, Tc_ex, Pc_ex, phc_ex, sc.T, sc.σ )
-            vtkfile["Density"]     = Array(dumc)
+            vtkfile["Density"]      = Array(dumc)
             @parallel Viscosity!( dumc, Tc_ex, phc_ex, sc.T )
-            vtkfile["Viscosity"]   = Array(dumc)
+            vtkfile["Viscosity"]    = Array(dumc)
             @parallel Peclet!( dumc, Tc_ex, Pc_ex, Vx, Vy, Vz, phc_ex, ϕi, sc.T, sc.σ, sc.V, sc.L )
-            vtkfile["Peclet"]   = Array(dumc)
+            vtkfile["Peclet"]       = Array(dumc)
             @parallel EffectiveHeatCapacity!( dumc, Tc_ex, Pc_ex, phc_ex, ϕi, sc.T, sc.σ, sc.C, sc.ρ)
             vtkfile["HeatCapacity"] = Array(dumc)
             outfiles = vtk_save(vtkfile)

@@ -195,11 +195,11 @@ end
         # bottom
         x5 = 62.5e3/sc.L, x6 = 61.8e3/sc.L,
         y5 =-3e3/sc.L, y6 =-3e3/sc.L
-        
+
     )
-     # Secondary detachment fault 2
+    # Secondary detachment fault 2
     fault2 = (
-         # bottom surface
+        # bottom surface
         x1 = 48.5e3/sc.L, x2 = 54.5e3/sc.L,  
         y1 = 0e3/sc.L,  y2 =-7e3/sc.L, 
         # top surface
@@ -226,7 +226,7 @@ end
         x1 = 32000.0/sc.L, x2 = 69397.54576150524/sc.L,
         y1 =-17800.0/sc.L, y2 = 0.0/sc.L,
     )
-    
+
     geometry = (
         y_plateau = 1*3e3/sc.L,
         surf = (
@@ -247,7 +247,7 @@ end
         ),
         fault1 = (
             # top
-            
+
             a1 = a(fault1.x1, fault1.x2, fault1.y1, fault1.y2),
             b1 = b(fault1.x1, fault1.x2, fault1.y1, fault1.y2),
             # bottom
@@ -303,7 +303,7 @@ end
     nitmax  = 1e4
     nitout  = 100
     tolT    = 1e-10  # Thermal solver
-    tolP    = 1e-17  # Darcy solver
+    tolP    = 1e-18  # Darcy solver
     @info "Go go go!!"
 
     # Initialisation
@@ -393,6 +393,11 @@ end
             @parallel SmoothConductivityV2C( dumc,  k_ρf )
             @parallel SmoothConductivityC2V( k_ρf, dumc )
             @parallel InitConductivity!(kx, ky, kz, k_ρf)
+
+            @show size(ρC_ϕρ)
+            @show size(Tc_ex)
+            @show size(Pc_ex)
+            @show size(phc)
             @parallel ComputeρCeffective!(ρC_ϕρ, Tc_ex, Pc_ex, phc, ϕi, sc.T, sc.σ, sc.C, sc.ρ)
 
             @parallel GershgorinPoisson!( Xc0, PC, ρC_ϕρ, kx, ky, kz, transient, dt, dx, dy, dz )
@@ -404,7 +409,7 @@ end
             c        = 2.0*sqrt(λmin)*cfact
             h1, h2   = (2-c*Δτ)/(2+c*Δτ), 2*Δτ/(2+c*Δτ)
             @show λmin, λmax
-    
+
             @parallel ResetA!(Fc, Fc0)
             @parallel InitThermal!(Xc0, Tc_ex)
             nF_abs, nF_rel, nF_ini = 0., 0., 0.
@@ -418,7 +423,7 @@ end
                 @parallel ComputeFlux!(qx, qy, qz, kx, ky, kz, Tc_ex, _dx, _dy, _dz)
                 @parallel ResidualTemperatureLinearised!(Fc, Tc_ex, Xc0, ρC_ϕρ, phc, PC, qx, qy, qz, Qt, transient, _dt, _dx, _dy, _dz)
                 @parallel DYRELUpdate!(Fc0, Tc_ex, Fc, h1, h2, Δτ)
-                
+
                 if (USE_MPI) update_halo!(Tc_ex); end
                 if check
                     @parallel Multiply( dumc, Fc, PC )
@@ -529,7 +534,7 @@ end
         @printf("min(Vy)    = %11.4e - max(Vy)    = %11.4e\n", minimum_g(Vy)*sc.V,    maximum_g(Vy)*sc.V )
 
         #---------------------------------------------------------------------
-        if (Vizu && mod(it, nout) == 0)
+        if (Vizu && mod(it, nout) == 0 || it==1)
             tMa = @sprintf("%03f", time*sc.t/1e6/year)
             y_topo = Topography.( xce, geometry.y_plateau, geometry.surf.a1, geometry.surf.b1 )
             # p1 = heatmap(xce*sc.L/1e3, yce*sc.L/1e3, (Tc_ex[:,:,2]'.*sc.T.-273.15), c=cgrad(:hot, rev=true), aspect_ratio=1, clims=(0, 700), xlim=(0,120), ylim=(-30,5)) 
@@ -575,7 +580,7 @@ end
             vtkfile["Velocity"]    = (Array(Fc0), Array(Fc), Array(Fcit))
             @parallel EffectiveThermalConductivity!( dumc, Tc_ex, ϕi, phc, sc.T )
             vtkfile["kThermal"]    = Array(dumc)
-            @parallel Permeability!( dumc, ymin, dy, phc, δ, sc.L )
+            @parallel Permeability!( dumc, k_fact, ymin, dy, phc, δ, sc.L )
             vtkfile["Perm"]        = Array(dumc)
             @parallel FluidDensity!( dumc, Tc_ex, Pc_ex, phc, sc.T, sc.σ )
             vtkfile["Density"]     = Array(dumc)

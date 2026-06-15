@@ -3,3 +3,5 @@
 /Manifest.toml
 .DS_Store
 *.vtr
+*.vti
+*.h5
