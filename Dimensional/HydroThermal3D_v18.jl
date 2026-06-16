@@ -1,9 +1,5 @@
-# Introduces:
-# add pluton instead of a heat source
-# sub time stepping for advection
-# @Thibault: remember to activate iterations for 1s step
-# @Thibault: remember to activate 3D pluton geometry
-# new model dimensions
+# includes the whole geometry of Khaled's model
+# with sub-time stepping for advection
 const USE_GPU  = false
 const GPU_ID   = 0
 const USE_MPI  = false
@@ -138,20 +134,6 @@ end
 
     @info "Starting HydroThermal3D!"
 
-    # Visualise
-    Hydro         = true
-    Thermal       = true
-    Advection     = true
-    Vizu          = true
-    Save          = true
-    path          = @__DIR__ # current directory
-    restart_from  = 0
-    nt            = 10
-    nout          = 10
-    dt_fact       = 5
-    dt_constant   = true
-    sticky_air    = false
-
     # Characteristic dimensions
     sc   = scaling()
     sc.T = 500.0
@@ -160,25 +142,41 @@ end
     sc.η = 1e10
     scale_me!( sc )
 
+    # Visualise
+    Hydro         = true
+    Thermal       = true
+    Advection     = true
+    Vizu          = true
+    Save          = true
+    dt_constant   = true
+    sticky_air    = false
+    path          = @__DIR__ # current directory
+    
+    # Time stepping
+    restart_from  = 0  # restart from step number n
+    nt            = 1  # number of time steps
+    nout          = 10 # save/visualise every nout step
+    𝐶             = 5  # multiplier to time step
+
     # Physics
     xmin      =  30e3/sc.L; xmax = 100.0e3/sc.L;   Lx = xmax - xmin
     ymin      = -30e3/sc.L; ymax =     5e3/sc.L;   Ly = ymax - ymin
     zmin      = -25.0/sc.L; zmax =  25.0e3/sc.L;   Lz = zmax - zmin
-    dT        = 600.0/sc.T
-    Ttop      = 293.15/sc.T
-    Tbot      = Ttop + dT
-    dTdy      = (Ttop - Tbot)/Ly
-    qyS       = 37e-3/(sc.W/sc.L^2)
-    dP        = 294e6/sc.σ
-    Ptop      = 1e5/sc.σ
-    Pbot      = Ptop + dP
-    ϕi        = 1e-2
-    g         = -9.81/(sc.L/sc.t^2)
-    Qt        = 0.0#*3.4e-4/(sc.W/sc.L^3)  
-    T_pluton  = (700. + 273.15)/sc.T  
-    δ         = 3000. /sc.L
-    k_fact    = 50.
-    y_plateau = 1.0*1.5e3/sc.L
+    dT        = 600.0/sc.T           # temperature difference
+    Ttop      = 293.15/sc.T          # surface temperature
+    Tbot      = Ttop + dT            # base temperature
+    dTdy      = (Ttop - Tbot)/Ly     # temperature gradient for initial condition
+    qyS       = 37e-3/(sc.W/sc.L^2)  # basal heat flux
+    dP        = 294e6/sc.σ           # pressure difference
+    Ptop      = 1e5/sc.σ             # surface pressure
+    Pbot      = Ptop + dP            # base pressure
+    ϕi        = 1e-2                 # porosity
+    g         = -9.81/(sc.L/sc.t^2)  # vertical gravitational acceleration
+    Qt        = 0.0#3.4e-4/(sc.W/sc.L^3) # heat source 
+    T_pluton  = (700. + 273.15)/sc.T # initial pluton temperature
+    δ         = 3000. /sc.L          # depth parameter for permeability
+    k_fact    = 50.                  # permeability enhancement factor for faults
+    y_plateau = 1.5e3/sc.L           # plateau altitude       
 
     # Initial conditions 
     # Main detachment fault
@@ -442,7 +440,7 @@ end
                 @show h1,   h2
                 @show λmin, λmax
 
-                @parallel ResetA!(Fc, Fc0)
+                @time @parallel ResetA!(Fc, Fc0)
                 # @parallel InitThermal!(Xc0, Tc_ex) 
                 nF_abs, nF_rel, nF_ini = 0., 0., 0.
 
@@ -453,7 +451,6 @@ end
                     if check @parallel SwapDYREL!(Xcit, Fcit, Tc_ex, Fc) end
                     @parallel SetTemperatureBCs!(Tc_ex, ky, wN, phc_ex, qyS, _dy, 1.05/sc.kt, Tbot, Ttop,  geometry.y_plateau, geometry.surf.a1, geometry.surf.b1, dTdy, dx, dy, sticky_air, sc.T, sc.kt, ϕi)
                     @parallel ComputeFlux!(qx, qy, qz, kx, ky, kz, Tc_ex, _dx, _dy, _dz)
-                    # @parallel ResidualTemperatureLinearised!(Fc, Tc_ex, Xc0, ρC_ϕρ, phc, PC, qx, qy, qz, Qt, transient, _dt, _dx, _dy, _dz)
                     @parallel ResidualTemperatureLinearised!(Fc, Tc_ex, Tc0, ρC_ϕρ, phc_ex, PC, qx, qy, qz, Qt, transient, _dt, _dx, _dy, _dz)
                     @parallel DYRELUpdate!(Fc0, Tc_ex, Fc, h1, h2, Δτ)
 
@@ -502,7 +499,6 @@ end
 
                 @parallel ResetA!(Fc, Fc0)
                 @parallel ϕρf_old(Xc0, Tc0, Pc0, phc_ex, ϕi, sc.ρ, sc.T, sc.σ)
-                # @parallel ϕρf(Xc0, Tc_ex, Pc_ex, phc_ex, ϕi, sc.ρ, sc.T, sc.σ)
                 nF_abs, nF_rel, nF_ini = 0., 0., 0.
                 @parallel ComputeFluidDensity(k_ρf, Tc_ex, Pc_ex, phv, sc.σ, sc.T, sc.ρ)
 
@@ -555,7 +551,7 @@ end
             time += dt
             #---------------------------------------------------------------------
             if Advection
-                dt_adv = dt_fact*1.0/6.1*min(dx,dy,dz) / max( maximum_g(abs.(Vx)), maximum_g(abs.(Vy)), maximum_g(abs.(Vz)))
+                dt_adv = 𝐶*1.0/6.1*min(dx,dy,dz) / max( maximum_g(abs.(Vx)), maximum_g(abs.(Vy)), maximum_g(abs.(Vz)))
                 nt_adv = 1
 
                 if dt_constant == false
@@ -635,7 +631,6 @@ end
             p3 = heatmap!(ax, xv *sc.L/1e3, yv *sc.L/1e3, phv[:,:,2], colormap=:jet1)# aspect_ratio=1, xlim=(xmin*sc.L/1e3, xmax*sc.L/1e3), ylim=(-30,5), title="Phases"*string(" @ t = ", tMa, " My" ), titlefont = font(12,"Computer Modern") )
             Colorbar(fig[1, 4], p3)
 
-            # @parallel Peclet!( dumc, Tc_ex, Pc_ex, Vx, Vy, Vz, phc, ϕi, sc.T, sc.σ, sc.V, sc.L )
             VxC = 0.5*(Vx[1:end-1,:,:] .+ Vx[2:end-0,:,:])
             VyC = 0.5*(Vy[:,1:end-1,:] .+ Vy[:,2:end-0,:])
             VzC = 0.5*(Vz[:,:,1:end-1] .+ Vz[:,:,2:end-0])
@@ -646,7 +641,19 @@ end
             ax = Axis(fig[2,3], aspect=DataAspect(), title="Velocity (cm/y) "*string(" @ t = ", tMa, " My" ))
             p4 = heatmap!(ax, xv *sc.L/1e3, yv *sc.L/1e3, V1[:,:,2].*sc.V*100*year, colormap=:jet1, colorrange=(0, 50))# aspect_ratio=1, xlim=(xmin*sc.L/1e3, xmax*sc.L/1e3), ylim=(-30,5), title="Phases"*string(" @ t = ", tMa, " My" ), titlefont = font(12,"Computer Modern") )
             Colorbar(fig[2, 4], p4)
-            
+
+            #-----------#
+            ax = Axis(fig[3,1], aspect=DataAspect(), title="Permeability (m2)"*string(" @ t = ", tMa, " (My)" ))
+            @parallel Permeability!( dumc, k_fact, ymin, dy, phc_ex, δ, sc.L )
+            p5 = heatmap!(ax, xc*sc.L/1e3, yc*sc.L/1e3, log10.(dumc[:,:,2].*sc.kf), colormap=:jet1)# aspect_ratio=1, xlim=(xmin*sc.L/1e3, xmax*sc.L/1e3), ylim=(-30,5), clim=(minP,maxP), title="P Moho = $(PMoho_str)", titlefont = font(12,"Computer Modern")) 
+            Colorbar(fig[3, 2], p5)
+
+            #-----------#
+            ax = Axis(fig[3,3], aspect=DataAspect(), title="Fluid density (kg/m3)"*string(" @ t = ", tMa, " (My)" ))
+            @parallel FluidDensity!( dumc, Tc_ex, Pc_ex, phc_ex, sc.T, sc.σ ) # already dimensional!!! 
+            p6 = heatmap!(ax, xc*sc.L/1e3, yc*sc.L/1e3, (dumc[:,:,2]), colormap=:jet1)# aspect_ratio=1, xlim=(xmin*sc.L/1e3, xmax*sc.L/1e3), ylim=(-30,5), clim=(minP,maxP), title="P Moho = $(PMoho_str)", titlefont = font(12,"Computer Modern")) 
+            Colorbar(fig[3, 4], p6)
+
             #-----------#
             display(fig)
             @printf("Imaged sliced at z index %d over ncx = %d, ncy = %d, ncz = %d --- time is %02f Ma\n", Int(ceil(ncz/2)), ncx, ncy, ncz, time*sc.t/1e6/year)
